@@ -182,7 +182,7 @@ let ``store never writes into the source directory (AT-010)`` () =
 
         let before = Directory.GetFileSystemEntries(sourceDir, "*", SearchOption.AllDirectories)
 
-        store.PublishBundle 1
+        store.PublishBundle 1 |> ignore
         store.LogStoreSize 1
         store.AppendSnapshot(
             { sequence = 1

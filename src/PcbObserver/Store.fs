@@ -133,9 +133,10 @@ type Store(projectRoot: string) =
         File.WriteAllText(tmp, json)
         File.Move(tmp, metadataPath, true)
 
-    /// Completeness gate before publication (AT-005). Manifest-driven: a
-    /// bundle is complete when its own manifest exists and every layer it
-    /// lists is present — legacy bundles with smaller sets stay complete.
+    /// Completeness gate before publication (AT-005). Manifest-driven and
+    /// self-describing: a PCB bundle lists `layers`, a schematic bundle lists
+    /// `pages[].file` — complete iff its manifest exists and every artifact
+    /// it lists is present. Legacy bundles with smaller sets stay complete.
     member this.IsBundleComplete(dir: string) : bool =
         let manifestPath = Path.Combine(dir, "manifest.json")
 
@@ -144,11 +145,33 @@ type Store(projectRoot: string) =
         else
             try
                 use doc = JsonDocument.Parse(File.ReadAllText manifestPath)
+                let root = doc.RootElement
+                let mutable el = Unchecked.defaultof<JsonElement>
 
-                doc.RootElement.GetProperty("layers").EnumerateArray()
-                |> Seq.forall (fun l ->
-                    let name = l.GetString()
-                    not (isNull name) && File.Exists(Path.Combine(dir, $"{name}.svg")))
+                let layerFiles =
+                    if root.TryGetProperty("layers", &el) then
+                        [ for l in el.EnumerateArray() do
+                              let name = l.GetString()
+
+                              if not (isNull name) then
+                                  $"{name}.svg" ]
+                    else
+                        []
+
+                let pageFiles =
+                    if root.TryGetProperty("pages", &el) then
+                        [ for p in el.EnumerateArray() do
+                              if p.TryGetProperty("file", &el) then
+                                  el.GetString() ]
+                    else
+                        []
+
+                let artifacts =
+                    layerFiles @ pageFiles
+                    |> List.filter (fun f -> not (isNull f) && f <> "")
+
+                artifacts.Length > 0
+                && artifacts |> List.forall (fun f -> File.Exists(Path.Combine(dir, f)))
             with _ ->
                 false
 

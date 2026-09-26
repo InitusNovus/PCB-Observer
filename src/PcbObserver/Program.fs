@@ -382,8 +382,260 @@ let private runWatch (argv: string list) : int =
                 holder.Dispose()
                 0
 
+// ---------------------------------------------------------------------------
+// watch-sch: schematic hierarchy observer MVP (SCH-FR-001..016 subset)
+// ---------------------------------------------------------------------------
+
+let private runWatchSch (argv: string list) : int =
+    let rec
+        parse
+            (xs: string list)
+            (root: string option)
+            (output: string option)
+            (cli: string option)
+            (port: int option)
+            (debounce: int option)
+            =
+        match xs with
+        | [] -> Ok(root, output, cli, port, debounce)
+        | "--output" :: v :: rest -> parse rest root (Some v) cli port debounce
+        | "--cli" :: v :: rest -> parse rest root output (Some v) port debounce
+        | "--port" :: v :: rest ->
+            match Int32.TryParse v with
+            | true, p -> parse rest root output cli (Some p) debounce
+            | _ -> Error $"Invalid --port: {v}"
+        | "--debounce-ms" :: v :: rest ->
+            match Int32.TryParse v with
+            | true, d when d > 0 -> parse rest root output cli port (Some d)
+            | _ -> Error $"Invalid --debounce-ms: {v}"
+        | flag :: _ when flag.StartsWith "-" -> Error $"Unknown option: {flag}"
+        | path :: rest ->
+            if root.IsSome then Error "Multiple root paths given"
+            else parse rest (Some path) output cli port debounce
+
+    let usage = "usage: PcbObserver watch-sch <root.kicad_sch> [--output DIR] [--cli PATH] [--port N] [--debounce-ms N]"
+
+    match parse argv None None None (Some 8765) (Some 500) with
+    | Error message ->
+        eprintfn "%s" message
+        eprintfn "%s" usage
+        2
+    | Ok(None, _, _, _, _) ->
+        eprintfn "%s" usage
+        2
+    | Ok(Some rootPath, outputOpt, cliOpt, portOpt, debounceOpt) ->
+        let source = Path.GetFullPath rootPath
+
+        if String.Equals(Path.GetExtension source, ".kicad_sch", StringComparison.OrdinalIgnoreCase)
+           |> not then
+            eprintfn "Expected a .kicad_sch root file"
+            2
+        elif not (File.Exists source) then
+            eprintfn $"Root schematic not found: {source}"
+            2
+        else
+            let cliPath = defaultArg cliOpt defaultCli
+            let observerRoot = Path.GetFullPath(defaultArg outputOpt (defaultObserverRoot ()))
+            let sourceDir = Path.GetDirectoryName source
+
+            let insideSource =
+                String.Equals(observerRoot, sourceDir, StringComparison.OrdinalIgnoreCase)
+                || observerRoot.StartsWith(
+                    sourceDir + string Path.DirectorySeparatorChar,
+                    StringComparison.OrdinalIgnoreCase
+                )
+
+            if insideSource then
+                eprintfn "Output must be outside the source project"
+                2
+            else
+                let projectId =
+                    let hash =
+                        sha256Hex (System.Text.Encoding.UTF8.GetBytes(source.ToLowerInvariant()))
+
+                    $"sch-{Path.GetFileNameWithoutExtension source}-{hash.Substring(0, 12)}"
+
+                let projectRoot = Path.Combine(observerRoot, "projects", projectId)
+                let store = Store projectRoot
+                store.PurgeStaleStaging()
+
+                let rendererVersion = cliVersion cliPath
+                let state = LiveState()
+                let mutable lastPublished = 0
+
+                // Dynamic dependency set (SCH-FR-005): refreshed after each
+                // capture; the watcher re-queries the name set per fire.
+                let mutable discovered = Sch.discover source
+
+                let runRender (snap: Snapshot) : unit =
+                    let staging = store.StagingFor snap.sequence
+
+                    // Re-discover INSIDE the immutable snapshot tree: the same
+                    // hierarchy, stable while kicad-cli reads it.
+                    let snapRoot = Path.Combine(snap.path, Path.GetFileName source)
+                    let disc = Sch.discover snapRoot
+                    let pages, anomalies = Sch.mapPages disc
+
+                    let schSnap =
+                        SchPipeline.toSnapshotReconstruct snap (Path.GetFileName source)
+
+                    SchPipeline.renderSch Render.runKiCad cliPath staging schSnap
+
+                    let rows, renderAnomalies = SchPipeline.analyzePages disc pages staging
+
+                    SchPipeline.writeSchManifest
+                        staging
+                        schSnap
+                        disc
+                        rows
+                        (anomalies @ renderAnomalies)
+                        rendererVersion
+
+                    if not (SchPipeline.bundleIsPublishable rows) then
+                        failwith "schematic bundle not publishable (pages not rendered and not missing)"
+
+                let onComplete (snap: Snapshot) : unit =
+                    let published =
+                        lock
+                            state.Gate
+                            (fun () ->
+                                if snap.sequence > lastPublished && store.PublishBundle snap.sequence then
+                                    lastPublished <- snap.sequence
+                                    true
+                                else
+                                    false)
+
+                    if published then
+                        store.PruneHistory lastPublished
+                        store.LogStoreSize snap.sequence
+                        state.RecordRendered snap.sequence snap.sha256 (DateTime.UtcNow.ToString("o"))
+
+                        printfn $"LIVE · #{snap.sequence} · {snap.sha256.Substring(0, 12)} · sch bundle published"
+                    else
+                        printfn $"seq {snap.sequence} completed but not published (superseded or incomplete)"
+
+                    state.Trigger()
+
+                let onError (snap: Snapshot, ex: exn) : unit =
+                    let failedSeq =
+                        if obj.ReferenceEquals(snap, null) then 0 else snap.sequence
+
+                    lock state.Gate (fun () -> state.RecordFailure failedSeq ex.Message)
+
+                    printfn
+                        $"render failed (seq {failedSeq}): {ex.Message} · will update on next save"
+
+                    state.Trigger()
+
+                let queue = RenderQueue(runRender, onComplete, onError)
+
+                let captureNow () : unit =
+                    let seq = lock state.Gate (fun () -> store.NextSequence())
+
+                    try
+                        let disc = Sch.discover source
+                        discovered <- disc
+
+                        let snap = SchPipeline.captureSch disc store.SnapshotsDir seq
+
+                        store.AppendSnapshot(SchPipeline.toSnapshot snap, source)
+
+                        let missingNote =
+                            if List.isEmpty disc.missing then
+                                ""
+                            else
+                                $" · missing {disc.missing.Length}"
+
+                        state.SetLastEvent(
+                            if List.isEmpty disc.missing then
+                                "source present · stable"
+                            else
+                                $"source present · missing {disc.missing.Length} child file(s)"
+                        )
+
+                        state.RecordCapture (SchPipeline.toSnapshot snap)
+
+                        printfn
+                            $"captured #{snap.sequence} · {snap.sha256.Substring(0, 12)} · {disc.files.Length} file(s){missingNote}"
+
+                        queue.Post(SchPipeline.toSnapshot snap)
+                    with e ->
+                        state.SetLastEvent $"capture unstable: {e.Message}"
+                        printfn $"capture unstable: {e.Message}"
+
+                let watcher =
+                    let directory = Path.GetDirectoryName source
+
+                    let fileNames () =
+                        discovered.files
+                        |> List.map Path.GetFileName
+                        |> Seq.distinct
+
+                    new Watch.DirectoryWatcherSet(
+                        directory,
+                        fileNames,
+                        debounceMs = defaultArg debounceOpt 500
+                    )
+
+                let watcherSubscription =
+                    watcher.Events.Subscribe(function
+                    | Watch.SourcePresent ->
+                        state.SetLastEvent "source changed · stable read"
+                        captureNow ()
+                    | Watch.WaitingForSource ->
+                        state.SetLastEvent "waiting for source"
+                        printfn "Waiting for source (no watched file names present after debounce)")
+
+                // D2 analog: initial capture through the queue when empty.
+                if store.CompleteBundles().IsEmpty then captureNow ()
+
+                let holder =
+                    { new Server.IStateHolder with
+                        override _.GetState() = state.View ()
+
+                        override _.GetSnapshotRows() =
+                            let complete = set (store.CompleteBundles ())
+                            let failed = set (state.FailedSeqs)
+
+                            [ for row in store.LoadSnapshots() ->
+                                  { sequence = row.sequence
+                                    captured_at = row.captured_at.ToString("o")
+                                    content_hash = row.content_hash
+                                    capture_status = row.capture_status
+                                    render_status =
+                                        (if complete.Contains row.sequence then "complete"
+                                         elif failed.Contains row.sequence then "failed"
+                                         else "skipped") } ]
+
+                        override _.Changed = state.Changed
+
+                        override _.Dispose() =
+                            watcherSubscription.Dispose()
+                            (watcher :> IDisposable).Dispose() }
+
+                let viewerPath = Path.Combine(AppContext.BaseDirectory, "viewer-sch.html")
+
+                let server = Server.start viewerPath store.RendersDir holder (defaultArg portOpt 8765)
+
+                printfn $"Observer:    {source}"
+                printfn $"Store:       {projectRoot}"
+                printfn $"Renderer:    kicad-cli {rendererVersion} ({cliPath})"
+                printfn $"Viewer:      {server.BaseUrl}/   (Ctrl+C stops the observer only — FR-018)"
+
+                let waitForExit () =
+                    let exitGate = new Threading.ManualResetEventSlim(false)
+                    Console.CancelKeyPress.Add(fun e -> e.Cancel <- true; exitGate.Set())
+                    exitGate.Wait()
+
+                waitForExit ()
+
+                printfn "Observer stopping; the agent, KiCad, and the source project are untouched."
+                server.Stop()
+                holder.Dispose()
+                0
 [<EntryPoint>]
 let main argv =
     match List.ofArray argv with
     | "watch" :: rest -> runWatch rest
+    | "watch-sch" :: rest -> runWatchSch rest
     | argv -> runOneshot argv

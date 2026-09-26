@@ -23,6 +23,8 @@ addendum §47: "first schematic prototype proves viable" **이후에만**. 구�
 
 > 회로도 프로토타입이 Stage 0 findings의 매핑 규칙 위에서 스냅샷→번들 E2E 1회 완주 시 개시.
 
+**상태(2026-09-27): 트리거 충족됨.** `watch-sch` 프로토타입이 스냅샷→루트 전체 익스포트→페이지 매핑→원자 게시 E2E를 완주(공유 자식 3인스턴스, 시트 재명명, 자식 전용 수정, 누락 자식 명시 상태 포함, 28/28 테스트). 다만 리팩터링은 여전히 **필수 아님**: PCB/스키매틱 양 파이프라인이 이미 Watch/Store/Queue/Server 코어를 실제 공유 중 — 어댑터 인터페이스 추출은 중복·불일치 증상이 실제로 보일 때 수행한다(다음 사이클 후보).
+
 그 전에는 리팩터링 금지(구현 피드백 없는 추상화 = 투기). 현재 Watch/Store/Queue/Server 모듈 분리가 이미 어댑터 수용면을 제공한다. 권장 인터페이스(addendum §47): `ProjectAdapter(discover_dependencies/capture_inputs/validate_snapshot/create_render_plan/run_render/build_manifest)`, `ViewerModel(list_views/view_identity/default_view/preserve_view_state)`.
 
 ## (c) Stage 0 findings → 회로도 MVP 설계 입력

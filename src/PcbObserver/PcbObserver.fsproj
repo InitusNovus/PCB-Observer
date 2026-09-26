@@ -9,6 +9,7 @@
     <Compile Include="Capture.fs" />
     <Compile Include="Render.fs" />
     <Compile Include="Sch.fs" />
+    <Compile Include="SchPipeline.fs" />
     <Compile Include="Watch.fs" />
     <Compile Include="Store.fs" />
     <Compile Include="Queue.fs" />
@@ -18,6 +19,7 @@
 
   <ItemGroup>
     <Content Include="viewer.html" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="viewer-sch.html" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

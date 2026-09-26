@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KiCad Observer · Schematic</title>
+<style>
+  html,body{margin:0;height:100%;background:#151a20;color:#e5edf5;font:14px system-ui,sans-serif}
+  body{display:flex;flex-direction:column}
+  header{padding:8px 14px;display:flex;align-items:center;gap:12px;background:#222b36;flex-wrap:wrap}
+  header strong{margin-right:auto}
+  button{background:#344354;color:inherit;border:1px solid #62758a;border-radius:5px;padding:5px 9px;cursor:pointer}
+  button.active{background:#4b6b8f;border-color:#7fa3d1}
+  #badge{padding:5px 10px;border-radius:5px;background:#1d3a26;border:1px solid #2f6f45;font-weight:600;white-space:nowrap}
+  #badge.hold{background:#3a331d;border-color:#6f5f2f}
+  #badge.error{background:#3a1d1d;border-color:#6f2f2f}
+  #badge.history{background:#2a2333;border-color:#57456f}
+  #viewport{flex:1;overflow:hidden;position:relative;cursor:grab;touch-action:none}
+  #viewport:active{cursor:grabbing}
+  #sheet{position:absolute;left:50%;top:50%;width:min(80vw,1400px);transform-origin:center center;pointer-events:none;user-select:none}
+  #pages{width:210px;background:#1b222c;border-right:1px solid #2c3745;overflow:auto;padding:8px}
+  #pages button{display:block;width:100%;margin:3px 0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #pages button.current{background:#4b6b8f;border-color:#7fa3d1}
+  #pages .flag{color:#c58f4a;font-size:11px;margin-left:5px}
+  #main{flex:1;display:flex;min-height:0}
+  footer{padding:6px 14px;color:#a7b7c8;background:#222b36;display:flex;gap:18px;flex-wrap:wrap}
+  #history{position:absolute;right:10px;top:10px;background:#222b36ee;border:1px solid #62758a;border-radius:6px;padding:8px;max-height:70%;overflow:auto;display:none;z-index:5}
+  #history button{display:block;width:100%;margin:3px 0;text-align:left}
+  #history .meta{color:#8fa2b5;font-size:12px;margin-left:6px}
+  #notice{position:absolute;left:50%;top:12px;transform:translateX(-50%);background:#5a2d2d;border-radius:6px;padding:6px 12px;display:none;z-index:6}
+</style>
+<header>
+  <strong>KiCad Observer · Schematic</strong>
+  <span id="badge">connecting…</span>
+  <button id="hold">HOLD</button>
+  <button id="latest">Latest</button>
+  <button id="historyBtn">HISTORY</button>
+  <button id="fit">Reset view</button>
+</header>
+<div id="main">
+  <div id="pages"></div>
+  <div id="viewport">
+    <img id="sheet" alt="schematic sheet">
+    <div id="history"></div>
+    <div id="notice"></div>
+  </div>
+</div>
+<footer><span id="f-source">—</span><span id="f-captured">—</span><span id="f-render">—</span><span>whole-design export from root · logical sheets keyed by name chain · source never modified</span></footer>
+<script>
+'use strict';
+const sheet=document.querySelector('#sheet'),viewport=document.querySelector('#viewport');
+const pagesBox=document.querySelector('#pages'),badge=document.querySelector('#badge');
+const historyPanel=document.querySelector('#history'),notice=document.querySelector('#notice');
+const STORE_KEY='pcbsch-view';
+const DEFAULT_VIEW={zoom:1,x:0,y:0};
+let view;
+try{view=Object.assign({},DEFAULT_VIEW,JSON.parse(localStorage.getItem(STORE_KEY)||'{}'))}
+catch(e){view=Object.assign({},DEFAULT_VIEW)}
+function saveView(){try{localStorage.setItem(STORE_KEY,JSON.stringify(view))}catch(e){}}
+
+// Per-sheet viewport memory (SCH-FR-011): map chain -> view.
+const pageViews=new Map(JSON.parse(sessionStorage.getItem('pcbsch-pageviews')||'[]'));
+function savePageViews(){try{sessionStorage.setItem('pcbsch-pageviews',JSON.stringify([...pageViews]))}catch(e){}}
+
+let displayed=0,liveSeq=0,hold=false;
+let pages=[];          // [{chain:[], file, status}]
+let currentChain=[];   // logical sheet being viewed
+let lastSource='—',lastCaptured=null,lastRender=null,lastError=null;
+
+function chainKey(c){return '/'+c.join('/')}
+function applyView(){
+  sheet.style.transform=`translate(-50%,-50%) translate(${view.x}px,${view.y}px) scale(${view.zoom})`;
+}
+function noticeFor(sec){notice.textContent=sec;notice.style.display='block';setTimeout(()=>notice.style.display='none',4000)}
+function setBadge(text,cls){badge.textContent=text;badge.className=cls}
+function renderBadge(){
+  if(!liveSeq){setBadge('connecting…','');return}
+  if(displayed!==liveSeq&&hold){setBadge(`HOLD · #${displayed} · latest #${liveSeq}`,'hold')}
+  else if(displayed!==liveSeq){setBadge(`HISTORY · #${displayed} · latest #${liveSeq}`,'history')}
+  else if(lastError&&(!lastRender||lastError.sequence>lastRender.sequence)){
+    setBadge(`Displaying #${displayed} · render failed · will update on next save`,'error')}
+  else if(lastRender&&lastCaptured&&lastCaptured.sequence>lastRender.sequence){
+    setBadge(`LIVE · #${lastRender.sequence} · rendering #${lastCaptured.sequence}…`,'')}
+  else{setBadge(`LIVE · #${liveSeq}`,'')}
+  document.querySelector('#f-source').textContent=`source: ${lastSource}`;
+  document.querySelector('#f-captured').textContent=lastCaptured?`captured: #${lastCaptured.sequence} ${new Date(lastCaptured.captured_at).toLocaleTimeString()}`:'captured: —';
+  document.querySelector('#f-render').textContent=lastRender?`render: #${lastRender.sequence} ${new Date(lastRender.created_at).toLocaleTimeString()}`:'render: —';
+}
+
+async function loadManifest(seq){
+  const m=await fetch(`/renders/${seq}/manifest.json`).then(r=>r.ok?r.json():null);
+  pages=m?(m.pages||[]):[];
+  return m;
+}
+function buildPageList(){
+  pagesBox.textContent='';
+  for(const p of pages){
+    const b=document.createElement('button');
+    b.textContent=chainKey(p.chain);
+    if(p.status==='missing'){const f=document.createElement('span');f.className='flag';f.textContent='missing';b.append(f)}
+    if(p.status!=='missing'&&p.status!=='rendered'){const f=document.createElement('span');f.className='flag';f.textContent=p.status;b.append(f)}
+    if(chainKey(p.chain)===chainKey(currentChain))b.classList.add('current');
+    b.onclick=()=>switchPage(p.chain);
+    b.title=p.sheet_file||'';
+    pagesBox.append(b);
+  }
+}
+function switchPage(chain){
+  // Remember the outgoing page's viewport (SCH-FR-011).
+  pageViews.set(chainKey(currentChain),{...view});
+  currentChain=chain;
+  const restored=pageViews.get(chainKey(chain));
+  view=restored?{...restored,...{}}:{...DEFAULT_VIEW};
+  showPage();
+  buildPageList();
+  renderBadge();
+}
+function showPage(){
+  const p=pages.find(q=>chainKey(q.chain)===chainKey(currentChain))||pages[0];
+  if(!p){sheet.removeAttribute('src');return}
+  currentChain=p.chain;
+  sheet.onerror=()=>noticeFor('페이지 자산을 불러올 수 없습니다 — 최신으로 이동합니다');
+  sheet.src=`/renders/${displayed}/${encodeURIComponent(p.file)}`;
+}
+// SCH-FR-012: updates never auto-jump; stay on the same logical sheet when it
+// still exists, else fall back to the root sheet.
+function showSeq(seq){
+  displayed=seq;
+  loadManifest(seq).then(()=>{
+    const still=pages.some(p=>chainKey(p.chain)===chainKey(currentChain));
+    if(!still){
+      const root=pages.find(p=>p.chain.length===0);
+      currentChain=root?root.chain:(pages[0]?pages[0].chain:[]);
+      view={...DEFAULT_VIEW};
+    }
+    showPage();buildPageList();renderBadge();
+  });
+}
+function refreshFromState(){
+  fetch('/api/state').then(r=>r.json()).then(s=>{
+    lastSource=s.source_last_event;lastCaptured=s.latest_captured_snapshot;lastRender=s.latest_completed_render;lastError=s.last_error;
+    if(s.latest_completed_render)liveSeq=s.latest_completed_render.sequence;
+    if(!hold&&liveSeq&&displayed!==liveSeq)showSeq(liveSeq);else renderBadge();
+  });
+}
+const es=new EventSource('/api/events');
+es.addEventListener('state',refreshFromState);
+es.addEventListener('bundle',refreshFromState);
+es.onopen=refreshFromState;
+refreshFromState();
+
+document.querySelector('#hold').onclick=e=>{
+  hold=!hold;
+  e.target.textContent=hold?'HOLD ✓':'HOLD';
+  e.target.classList.toggle('active',hold);
+  renderBadge();
+};
+function goLatest(){
+  hold=false;
+  const h=document.querySelector('#hold');h.textContent='HOLD';h.classList.remove('active');
+  historyPanel.style.display='none';
+  if(liveSeq)showSeq(liveSeq);
+}
+document.querySelector('#latest').onclick=goLatest;
+document.querySelector('#historyBtn').onclick=async()=>{
+  if(historyPanel.style.display==='block'){historyPanel.style.display='none';return}
+  const rows=await fetch('/api/snapshots').then(r=>r.json());
+  historyPanel.textContent='';
+  for(const row of rows.filter(r=>r.render_status==='complete')){
+    const b=document.createElement('button');
+    const main=document.createElement('span');main.textContent=`#${row.sequence}`;
+    const meta=document.createElement('span');meta.className='meta';
+    meta.textContent=`${row.content_hash.slice(0,8)} · ${new Date(row.captured_at).toLocaleTimeString()}`;
+    b.append(main);b.append(meta);
+    if(row.sequence===displayed)b.classList.add('current');
+    b.onclick=()=>{historyPanel.style.display='none';showSeq(row.sequence)};
+    historyPanel.append(b);
+  }
+  historyPanel.style.display='block';
+};
+
+viewport.addEventListener('wheel',e=>{e.preventDefault();view.zoom=Math.max(.2,Math.min(20,view.zoom*(e.deltaY<0?1.15:1/1.15)));applyView();saveView()},{passive:false});
+let drag=null;
+viewport.addEventListener('pointerdown',e=>{drag=[e.clientX-view.x,e.clientY-view.y];viewport.setPointerCapture(e.pointerId)});
+viewport.addEventListener('pointermove',e=>{if(drag){view.x=e.clientX-drag[0];view.y=e.clientY-drag[1];applyView()}});
+viewport.addEventListener('pointerup',()=>{drag=null;saveView();savePageViews()});
+viewport.addEventListener('pointercancel',()=>drag=null);
+document.querySelector('#fit').onclick=()=>{view={...DEFAULT_VIEW};applyView();saveView()};
+applyView();
+</script>
+</html>

@@ -3,6 +3,7 @@ module PcbObserver.SchTests
 open System
 open System.IO
 open PcbObserver.Sch
+open PcbObserver.SchPipeline
 open PcbObserver.Tests
 open Xunit
 
@@ -129,3 +130,26 @@ let ``scanner ignores parentheses and escapes inside property strings`` () =
     Assert.Single(refs) |> ignore
     Assert.Equal("A (tricky) \"name\"", fst refs[0])
     Assert.Equal("child one.kicad_sch", snd refs[0])
+
+[<Fact>]
+let ``missing-child page flags missing even when an empty frame is emitted`` () =
+    let dir = copyCase "case_b_basic"
+    File.Delete(Path.Combine(dir, "mcu.kicad_sch"))
+    let disc = discover (Path.Combine(dir, "root.kicad_sch"))
+    let pages, _ = mapPages disc
+
+    // kicad-cli emits an empty-frame SVG for missing children (findings
+    // SS49-7) — simulate that: every expected file "exists".
+    let staging = Path.Combine(dir, "out")
+    Directory.CreateDirectory staging |> ignore
+
+    for p in pages do
+        File.WriteAllText(Path.Combine(staging, p.file), "<svg/>")
+
+    let rows, anomalies = PcbObserver.SchPipeline.analyzePages disc pages staging
+    let mcu = rows |> Array.find (fun r -> r.chain = [|"MCU"|])
+    Assert.Equal("missing", mcu.status)
+    Assert.Equal("rendered", (rows |> Array.find (fun r -> r.chain = [||])).status)
+    Assert.Equal("rendered", (rows |> Array.find (fun r -> r.chain = [|"Power"|])).status)
+    Assert.Empty(anomalies)
+    Assert.True(PcbObserver.SchPipeline.bundleIsPublishable rows)

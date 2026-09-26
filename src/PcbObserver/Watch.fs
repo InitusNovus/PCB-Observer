@@ -132,3 +132,89 @@ type DirectoryWatcher(sourcePath: string, ?debounceMs: int, ?activityCapMs: int,
                     if not (isNull fsw) then
                         fsw.EnableRaisingEvents <- false
                         fsw.Dispose())
+
+/// Watches a directory for a DYNAMIC set of file names (schematic dependency
+/// set changes as children are added/removed — SCH-FR-005). The name set is
+/// re-queried on every debounce close, so new children are picked up without
+/// restart. Presence rule: at least one watched name present.
+type DirectoryWatcherSet
+    (
+        directory: string,
+        fileNames: unit -> string seq,
+        ?debounceMs: int,
+        ?activityCapMs: int,
+        ?clock: unit -> DateTime
+    ) =
+
+    let debounceMs = defaultArg debounceMs 500
+    let activityCapMs = defaultArg activityCapMs 2000
+    let clock = defaultArg clock (fun () -> DateTime.UtcNow)
+    let gate = obj ()
+    let changed = Event<WatchEvent>()
+    let mutable disposed = false
+
+    let fire () =
+        lock gate (fun () ->
+            let names =
+                try
+                    fileNames () |> Set.ofSeq
+                with _ ->
+                    Set.empty
+
+            let exists =
+                Directory.Exists directory
+                && (names |> Seq.exists (fun n -> File.Exists(Path.Combine(directory, n))))
+
+            changed.Trigger(if exists then SourcePresent else WaitingForSource))
+
+    let debounce = Debounce(debounceMs, activityCapMs, fire)
+    let mutable fsw: FileSystemWatcher = null
+    let pumpTimer = new Timers.Timer(float debounceMs / 2.0, AutoReset = true, Enabled = true)
+
+    do
+        let notifyFilter =
+            NotifyFilters.FileName
+            ||| NotifyFilters.LastWrite
+            ||| NotifyFilters.Size
+            ||| NotifyFilters.CreationTime
+
+        let watcher =
+            new FileSystemWatcher(
+                directory,
+                EnableRaisingEvents = true,
+                IncludeSubdirectories = false,
+                InternalBufferSize = 64 * 1024,
+                NotifyFilter = notifyFilter
+            )
+
+        let onFsEvent (_: FileSystemEventArgs) =
+            lock gate (fun () ->
+                if not disposed then debounce.MarkDirty(clock ()) |> ignore)
+
+        watcher.Created.Add onFsEvent
+        watcher.Changed.Add onFsEvent
+        watcher.Renamed.Add onFsEvent
+        watcher.Deleted.Add onFsEvent
+
+        watcher.Error.Add(fun _ ->
+            lock gate (fun () ->
+                if not disposed then debounce.MarkDirty(clock ()) |> ignore))
+
+        fsw <- watcher
+
+        pumpTimer.Elapsed.Add(fun _ ->
+            lock gate (fun () ->
+                if not disposed then debounce.Pump(clock ()) |> ignore))
+
+    member _.Events: IObservable<WatchEvent> = changed.Publish
+
+    interface IDisposable with
+        member _.Dispose() =
+            lock gate (fun () ->
+                if not disposed then
+                    disposed <- true
+                    pumpTimer.Dispose()
+
+                    if not (isNull fsw) then
+                        fsw.EnableRaisingEvents <- false
+                        fsw.Dispose())
