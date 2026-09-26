@@ -151,35 +151,35 @@ let start (viewerPath: string) (rendersRoot: string) (state: IStateHolder) (pref
 
         (builder, app)
 
-    // Port fallback (R8): preferred port first, then an ephemeral one.
-    let mutable builder, app = buildApp preferredPort
+    // Port fallback (R8): bind synchronously via StartAsync so an occupied
+    // port raises here (AddressInUseException) instead of faulting a
+    // discarded RunAsync task and crashing later (QA defect D-1).
+    let tryStart (port: int) : WebApplication option =
+        let _, candidate = buildApp port
 
-    try
-        app.RunAsync() |> ignore // non-blocking
-    with _ ->
-        let b2, app2 = buildApp 0
-        builder <- b2
-        app <- app2
-        app.RunAsync() |> ignore
+        try
+            candidate.StartAsync().Wait(10_000) |> ignore
+            Some candidate
+        with _ ->
+            try
+                candidate.StopAsync().Wait(5_000) |> ignore
+            with _ ->
+                ()
 
-    // Kestrel binds asynchronously; poll until the addresses are known.
-    let deadline = DateTime.UtcNow.AddSeconds 10.0
+            None
 
-    let mutable addresses =
-        [ for u in app.Urls do
-              if u.StartsWith "http" then
-                  u ]
-
-    while addresses.IsEmpty && DateTime.UtcNow < deadline do
-        Threading.Thread.Sleep 50
-
-        addresses <-
-            [ for u in app.Urls do
-                  if u.StartsWith "http" then
-                      u ]
+    let app =
+        match tryStart preferredPort with
+        | Some started -> started
+        | None ->
+            match tryStart 0 with
+            | Some started -> started
+            | None -> failwith $"could not bind any loopback port (preferred {preferredPort})"
 
     let baseUrl =
-        match addresses with
+        match [ for u in app.Urls do
+                    if u.StartsWith "http" then
+                        u ] with
         | url :: _ -> url
         | [] -> "http://127.0.0.1:0"
 
@@ -187,4 +187,6 @@ let start (viewerPath: string) (rendersRoot: string) (state: IStateHolder) (pref
 
     { Port = port
       BaseUrl = baseUrl
-      Stop = fun () -> app.StopAsync().Wait() }
+      Stop = fun () ->
+          app.StopAsync().Wait(10_000) |> ignore
+          (app :> IDisposable).Dispose() }
