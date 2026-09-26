@@ -1,0 +1,790 @@
+﻿{
+    "meta":  {
+                 "kicadCli":  "C:/Program Files/KiCad/10.0/bin/kicad-cli.exe",
+                 "startedUtc":  "2026-09-26T17:00:20.6229800Z",
+                 "workRoot":  "C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0",
+                 "psVersion":  "5.1.26100.9444"
+             },
+    "kicadVersion":  "10.0.4\r\n",
+    "item1_perCaseExport":  [
+                                {
+                                    "case":  "case_c_nested",
+                                    "result":  {
+                                                   "exitCode":  0,
+                                                   "ms":  1014.2,
+                                                   "svgCount":  4,
+                                                   "files":  [
+                                                                 {
+                                                                     "file":  "root.svg",
+                                                                     "bytes":  467314
+                                                                 },
+                                                                 {
+                                                                     "file":  "root-Drive.svg",
+                                                                     "bytes":  1469870
+                                                                 },
+                                                                 {
+                                                                     "file":  "root-Drive-Phase.svg",
+                                                                     "bytes":  1473340
+                                                                 },
+                                                                 {
+                                                                     "file":  "root-Drive-Phase-Gate.svg",
+                                                                     "bytes":  1463664
+                                                                 }
+                                                             ],
+                                                   "plotOrder":  [
+                                                                     "root.svg",
+                                                                     "root-Drive.svg",
+                                                                     "root-Drive-Phase.svg",
+                                                                     "root-Drive-Phase-Gate.svg"
+                                                                 ],
+                                                   "stdout":  "\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item1\\case_c_nested\\root.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item1\\case_c_nested\\root-Drive.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item1\\case_c_nested\\root-Drive-Phase.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item1\\case_c_nested\\root-Drive-Phase-Gate.svg\u0027에 플롯됨.\r\n완료.",
+                                                   "stderr":  "",
+                                                   "expectedPages":  4,
+                                                   "pass":  true
+                                               }
+                                },
+                                {
+                                    "case":  "case_a_flat",
+                                    "result":  {
+                                                   "exitCode":  0,
+                                                   "ms":  1009,
+                                                   "svgCount":  1,
+                                                   "files":  [
+                                                                 {
+                                                                     "file":  "root.svg",
+                                                                     "bytes":  457414
+                                                                 }
+                                                             ],
+                                                   "plotOrder":  [
+                                                                     "root.svg"
+                                                                 ],
+                                                   "stdout":  "\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item1\\case_a_flat\\root.svg\u0027에 플롯됨.\r\n완료.",
+                                                   "stderr":  "",
+                                                   "expectedPages":  1,
+                                                   "pass":  true
+                                               }
+                                },
+                                {
+                                    "case":  "case_e_mutation",
+                                    "result":  {
+                                                   "exitCode":  0,
+                                                   "ms":  1011.9,
+                                                   "svgCount":  3,
+                                                   "files":  [
+                                                                 {
+                                                                     "file":  "root.svg",
+                                                                     "bytes":  478549
+                                                                 },
+                                                                 {
+                                                                     "file":  "root-MCU.svg",
+                                                                     "bytes":  1464336
+                                                                 },
+                                                                 {
+                                                                     "file":  "root-Power.svg",
+                                                                     "bytes":  1459288
+                                                                 }
+                                                             ],
+                                                   "plotOrder":  [
+                                                                     "root.svg",
+                                                                     "root-Power.svg",
+                                                                     "root-MCU.svg"
+                                                                 ],
+                                                   "stdout":  "\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item1\\case_e_mutation\\root.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item1\\case_e_mutation\\root-Power.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item1\\case_e_mutation\\root-MCU.svg\u0027에 플롯됨.\r\n완료.",
+                                                   "stderr":  "",
+                                                   "expectedPages":  3,
+                                                   "pass":  true
+                                               }
+                                },
+                                {
+                                    "case":  "case_b_basic",
+                                    "result":  {
+                                                   "exitCode":  0,
+                                                   "ms":  1015.2,
+                                                   "svgCount":  3,
+                                                   "files":  [
+                                                                 {
+                                                                     "file":  "root.svg",
+                                                                     "bytes":  478549
+                                                                 },
+                                                                 {
+                                                                     "file":  "root-MCU.svg",
+                                                                     "bytes":  1464336
+                                                                 },
+                                                                 {
+                                                                     "file":  "root-Power.svg",
+                                                                     "bytes":  1459288
+                                                                 }
+                                                             ],
+                                                   "plotOrder":  [
+                                                                     "root.svg",
+                                                                     "root-Power.svg",
+                                                                     "root-MCU.svg"
+                                                                 ],
+                                                   "stdout":  "\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item1\\case_b_basic\\root.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item1\\case_b_basic\\root-Power.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item1\\case_b_basic\\root-MCU.svg\u0027에 플롯됨.\r\n완료.",
+                                                   "stderr":  "",
+                                                   "expectedPages":  3,
+                                                   "pass":  true
+                                               }
+                                },
+                                {
+                                    "case":  "case_d_shared",
+                                    "result":  {
+                                                   "exitCode":  0,
+                                                   "ms":  1015.4,
+                                                   "svgCount":  4,
+                                                   "files":  [
+                                                                 {
+                                                                     "file":  "root.svg",
+                                                                     "bytes":  498507
+                                                                 },
+                                                                 {
+                                                                     "file":  "root-Channel A.svg",
+                                                                     "bytes":  1460703
+                                                                 },
+                                                                 {
+                                                                     "file":  "root-Channel B.svg",
+                                                                     "bytes":  1468621
+                                                                 },
+                                                                 {
+                                                                     "file":  "root-Channel C.svg",
+                                                                     "bytes":  1453304
+                                                                 }
+                                                             ],
+                                                   "plotOrder":  [
+                                                                     "root.svg",
+                                                                     "root-Channel A.svg",
+                                                                     "root-Channel B.svg",
+                                                                     "root-Channel C.svg"
+                                                                 ],
+                                                   "stdout":  "\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item1\\case_d_shared\\root.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item1\\case_d_shared\\root-Channel A.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item1\\case_d_shared\\root-Channel B.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item1\\case_d_shared\\root-Channel C.svg\u0027에 플롯됨.\r\n완료.",
+                                                   "stderr":  "",
+                                                   "expectedPages":  4,
+                                                   "pass":  true
+                                               }
+                                }
+                            ],
+    "item2_caseD_sharedInstances":  {
+                                        "export":  {
+                                                       "exitCode":  0,
+                                                       "ms":  1013.1,
+                                                       "svgCount":  4,
+                                                       "files":  [
+                                                                     {
+                                                                         "file":  "root.svg",
+                                                                         "bytes":  498507
+                                                                     },
+                                                                     {
+                                                                         "file":  "root-Channel A.svg",
+                                                                         "bytes":  1460703
+                                                                     },
+                                                                     {
+                                                                         "file":  "root-Channel B.svg",
+                                                                         "bytes":  1468621
+                                                                     },
+                                                                     {
+                                                                         "file":  "root-Channel C.svg",
+                                                                         "bytes":  1453304
+                                                                     }
+                                                                 ],
+                                                       "plotOrder":  [
+                                                                         "root.svg",
+                                                                         "root-Channel A.svg",
+                                                                         "root-Channel B.svg",
+                                                                         "root-Channel C.svg"
+                                                                     ],
+                                                       "stdout":  "\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item2\\case_d\\root.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item2\\case_d\\root-Channel A.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item2\\case_d\\root-Channel B.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item2\\case_d\\root-Channel C.svg\u0027에 플롯됨.\r\n완료.",
+                                                       "stderr":  ""
+                                                   },
+                                        "netlistExitCode":  0,
+                                        "netlistWarning":  "",
+                                        "compsPerSheet":  [
+                                                              {
+                                                                  "sheet":  "/",
+                                                                  "compCount":  10,
+                                                                  "sampleRefs":  [
+                                                                                     "C101",
+                                                                                     "C102",
+                                                                                     "C103",
+                                                                                     "C104",
+                                                                                     "C105",
+                                                                                     "D101"
+                                                                                 ]
+                                                              },
+                                                              {
+                                                                  "sheet":  "/Channel A/",
+                                                                  "compCount":  29,
+                                                                  "sampleRefs":  [
+                                                                                     "C201",
+                                                                                     "C202",
+                                                                                     "C203",
+                                                                                     "C204",
+                                                                                     "D201",
+                                                                                     "D202"
+                                                                                 ]
+                                                              },
+                                                              {
+                                                                  "sheet":  "/Channel B/",
+                                                                  "compCount":  29,
+                                                                  "sampleRefs":  [
+                                                                                     "C301",
+                                                                                     "C302",
+                                                                                     "C303",
+                                                                                     "C304",
+                                                                                     "D301",
+                                                                                     "D302"
+                                                                                 ]
+                                                              },
+                                                              {
+                                                                  "sheet":  "/Channel C/",
+                                                                  "compCount":  28,
+                                                                  "sampleRefs":  [
+                                                                                     "C201",
+                                                                                     "C202",
+                                                                                     "C203",
+                                                                                     "C204",
+                                                                                     "D201",
+                                                                                     "D202"
+                                                                                 ]
+                                                              }
+                                                          ],
+                                        "channelC_refReuseExamples":  [
+                                                                          "C201",
+                                                                          "C202",
+                                                                          "C203",
+                                                                          "C204",
+                                                                          "D201",
+                                                                          "D202",
+                                                                          "D203",
+                                                                          "D204"
+                                                                      ]
+                                    },
+    "item3_caseD_pages":  [
+                              {
+                                  "pagesArg":  "3,4",
+                                  "result":  {
+                                                 "exitCode":  0,
+                                                 "ms":  1012.9,
+                                                 "svgCount":  1,
+                                                 "files":  [
+                                                               {
+                                                                   "file":  "root.svg",
+                                                                   "bytes":  498507
+                                                               }
+                                                           ],
+                                                 "plotOrder":  [
+                                                                   "root.svg"
+                                                               ],
+                                                 "stdout":  "\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item3\\pages_3_4\\root.svg\u0027에 플롯됨.\r\n완료.",
+                                                 "stderr":  ""
+                                             }
+                              },
+                              {
+                                  "pagesArg":  "3",
+                                  "result":  {
+                                                 "exitCode":  0,
+                                                 "ms":  1019.5,
+                                                 "svgCount":  1,
+                                                 "files":  [
+                                                               {
+                                                                   "file":  "root.svg",
+                                                                   "bytes":  498507
+                                                               }
+                                                           ],
+                                                 "plotOrder":  [
+                                                                   "root.svg"
+                                                               ],
+                                                 "stdout":  "\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item3\\pages_3\\root.svg\u0027에 플롯됨.\r\n완료.",
+                                                 "stderr":  ""
+                                             }
+                              },
+                              {
+                                  "pagesArg":  "1",
+                                  "result":  {
+                                                 "exitCode":  0,
+                                                 "ms":  1013.5,
+                                                 "svgCount":  1,
+                                                 "files":  [
+                                                               {
+                                                                   "file":  "root.svg",
+                                                                   "bytes":  498507
+                                                               }
+                                                           ],
+                                                 "plotOrder":  [
+                                                                   "root.svg"
+                                                               ],
+                                                 "stdout":  "\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item3\\pages_1\\root.svg\u0027에 플롯됨.\r\n완료.",
+                                                 "stderr":  ""
+                                             }
+                              },
+                              {
+                                  "pagesArg":  "1,2,3,4",
+                                  "result":  {
+                                                 "exitCode":  0,
+                                                 "ms":  1010.8,
+                                                 "svgCount":  1,
+                                                 "files":  [
+                                                               {
+                                                                   "file":  "root.svg",
+                                                                   "bytes":  498507
+                                                               }
+                                                           ],
+                                                 "plotOrder":  [
+                                                                   "root.svg"
+                                                               ],
+                                                 "stdout":  "\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item3\\pages_1_2_3_4\\root.svg\u0027에 플롯됨.\r\n완료.",
+                                                 "stderr":  ""
+                                             }
+                              },
+                              {
+                                  "pagesArg":  "9",
+                                  "result":  {
+                                                 "exitCode":  0,
+                                                 "ms":  1011.4,
+                                                 "svgCount":  1,
+                                                 "files":  [
+                                                               {
+                                                                   "file":  "root.svg",
+                                                                   "bytes":  498507
+                                                               }
+                                                           ],
+                                                 "plotOrder":  [
+                                                                   "root.svg"
+                                                               ],
+                                                 "stdout":  "\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item3\\pages_9\\root.svg\u0027에 플롯됨.\r\n완료.",
+                                                 "stderr":  ""
+                                             }
+                              },
+                              {
+                                  "pagesArg":  "Channel B",
+                                  "result":  {
+                                                 "exitCode":  1,
+                                                 "ms":  1012.3,
+                                                 "svgCount":  0,
+                                                 "files":  [
+
+                                                           ],
+                                                 "plotOrder":  [
+
+                                                               ],
+                                                 "stdout":  "Maximum number of positional arguments exceeded, failed to parse \u0027C:\\Dev\\PCB-Observer\\fixtures\\sch\\case_d_shared\\root.kicad_sch\u0027\r\nUsage: export svg [--help] [--output OUTPUT_DIR] [--drawing-sheet SHEET_PATH] [--define-var KEY=VALUE]... [--variant VAR]... [--theme THEME_NAME] [--black-and-white] [--exclude-drawing-sheet] [--default-font VAR] [--draw-hop-over] [--no-background-color] [--pages PAGE_LIST] INPUT_FILE\r\n\r\nExport SVG\r\n\r\nPositional arguments:\r\n  INPUT_FILE                   Input file \r\n\r\nOptional arguments:\r\n  -h, --help                   Shows help message and exits \r\n  -o, --output                 Output directory [nargs=0..1] [default: \"\"]\r\n  --drawing-sheet              Path to drawing sheet, this overrides any existing project defined sheet when used [nargs=0..1] [default: \"\"]\r\n  -D, --define-var             Overrides or adds project variables, can be used multiple times to declare multiple variables.\r\n                               Use in the format of \u0027--define-var key=value\u0027 or \u0027-D key=value\u0027 [nargs=0..1] [default: {}] [may be repeated]\r\n  --variant                    The variant name(s) to output, can be used multiple times to specify multiple variants.\r\n                               When specifying multiple variants, use ${VARIANT} in the output path to generate separate files for each variant.\r\n                               When no --variant argument is provided, the default variant is output. [nargs=0..1] [default: {}] [may be repeated]\r\n  -t, --theme                  Color theme to use (will default to schematic settings) [nargs=0..1] [default: \"\"]\r\n  -b, --black-and-white        Black and white only \r\n  -e, --exclude-drawing-sheet  No drawing sheet \r\n  --default-font               Default font name [nargs=0..1] [default: \"\"]\r\n  --draw-hop-over              Draw hop over at wire crossings \r\n  -n, --no-background-color    Avoid setting a background color (regardless of theme) \r\n  --pages                      List of page numbers separated by comma to print, blank or unspecified is equivalent to all pages [nargs=0..1] [default: \"\"]",
+                                                 "stderr":  ""
+                                             }
+                              },
+                              {
+                                  "pagesArg":  "(blank)",
+                                  "result":  {
+                                                 "exitCode":  0,
+                                                 "ms":  1012.1,
+                                                 "svgCount":  4,
+                                                 "files":  [
+                                                               {
+                                                                   "file":  "root.svg",
+                                                                   "bytes":  498507
+                                                               },
+                                                               {
+                                                                   "file":  "root-Channel A.svg",
+                                                                   "bytes":  1460703
+                                                               },
+                                                               {
+                                                                   "file":  "root-Channel B.svg",
+                                                                   "bytes":  1468621
+                                                               },
+                                                               {
+                                                                   "file":  "root-Channel C.svg",
+                                                                   "bytes":  1453304
+                                                               }
+                                                           ],
+                                                 "plotOrder":  [
+                                                                   "root.svg",
+                                                                   "root-Channel A.svg",
+                                                                   "root-Channel B.svg",
+                                                                   "root-Channel C.svg"
+                                                               ],
+                                                 "stdout":  "\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item3\\pages_blank\\root.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item3\\pages_blank\\root-Channel A.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item3\\pages_blank\\root-Channel B.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item3\\pages_blank\\root-Channel C.svg\u0027에 플롯됨.\r\n완료.",
+                                                 "stderr":  ""
+                                             }
+                              }
+                          ],
+    "item4_caseE_mutations":  [
+                                  {
+                                      "mutation":  "M0 baseline",
+                                      "note":  "unchanged copy of case B",
+                                      "layout":  [
+                                                     "Power -\u003e power.kicad_sch page 2",
+                                                     "MCU -\u003e mcu.kicad_sch page 3"
+                                                 ],
+                                      "result":  {
+                                                     "exitCode":  0,
+                                                     "ms":  1012.2,
+                                                     "svgCount":  3,
+                                                     "files":  [
+                                                                   {
+                                                                       "file":  "root.svg",
+                                                                       "bytes":  478549
+                                                                   },
+                                                                   {
+                                                                       "file":  "root-MCU.svg",
+                                                                       "bytes":  1464336
+                                                                   },
+                                                                   {
+                                                                       "file":  "root-Power.svg",
+                                                                       "bytes":  1459288
+                                                                   }
+                                                               ],
+                                                     "plotOrder":  [
+                                                                       "root.svg",
+                                                                       "root-Power.svg",
+                                                                       "root-MCU.svg"
+                                                                   ],
+                                                     "stdout":  "\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_M0_baseline\\root.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_M0_baseline\\root-Power.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_M0_baseline\\root-MCU.svg\u0027에 플롯됨.\r\n완료.",
+                                                     "stderr":  ""
+                                                 }
+                                  },
+                                  {
+                                      "mutation":  "M1 rename",
+                                      "note":  "Sheetname Power -\u003e \u0027Power Supply\u0027 (space in name)",
+                                      "layout":  [
+                                                     "Power Supply -\u003e power.kicad_sch page 2",
+                                                     "MCU -\u003e mcu.kicad_sch page 3"
+                                                 ],
+                                      "result":  {
+                                                     "exitCode":  0,
+                                                     "ms":  1009.6,
+                                                     "svgCount":  3,
+                                                     "files":  [
+                                                                   {
+                                                                       "file":  "root.svg",
+                                                                       "bytes":  481638
+                                                                   },
+                                                                   {
+                                                                       "file":  "root-MCU.svg",
+                                                                       "bytes":  1464336
+                                                                   },
+                                                                   {
+                                                                       "file":  "root-Power Supply.svg",
+                                                                       "bytes":  1462499
+                                                                   }
+                                                               ],
+                                                     "plotOrder":  [
+                                                                       "root.svg",
+                                                                       "root-Power Supply.svg",
+                                                                       "root-MCU.svg"
+                                                                   ],
+                                                     "stdout":  "\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_M1_rename\\root.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_M1_rename\\root-Power Supply.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_M1_rename\\root-MCU.svg\u0027에 플롯됨.\r\n완료.",
+                                                     "stderr":  ""
+                                                 }
+                                  },
+                                  {
+                                      "mutation":  "M2 reorder",
+                                      "note":  "page numbers 2/3 swapped between the two sheets",
+                                      "layout":  [
+                                                     "Power Supply -\u003e power.kicad_sch page 3",
+                                                     "MCU -\u003e mcu.kicad_sch page 2"
+                                                 ],
+                                      "result":  {
+                                                     "exitCode":  0,
+                                                     "ms":  1009.9,
+                                                     "svgCount":  3,
+                                                     "files":  [
+                                                                   {
+                                                                       "file":  "root.svg",
+                                                                       "bytes":  481638
+                                                                   },
+                                                                   {
+                                                                       "file":  "root-MCU.svg",
+                                                                       "bytes":  1464171
+                                                                   },
+                                                                   {
+                                                                       "file":  "root-Power Supply.svg",
+                                                                       "bytes":  1462664
+                                                                   }
+                                                               ],
+                                                     "plotOrder":  [
+                                                                       "root.svg",
+                                                                       "root-MCU.svg",
+                                                                       "root-Power Supply.svg"
+                                                                   ],
+                                                     "stdout":  "\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_M2_reorder\\root.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_M2_reorder\\root-MCU.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_M2_reorder\\root-Power Supply.svg\u0027에 플롯됨.\r\n완료.",
+                                                     "stderr":  ""
+                                                 }
+                                  },
+                                  {
+                                      "mutation":  "M3 retarget",
+                                      "note":  "MCU now points at power.kicad_sch (same file twice)",
+                                      "layout":  [
+                                                     "Power Supply -\u003e power.kicad_sch page 3",
+                                                     "MCU -\u003e power.kicad_sch page 2"
+                                                 ],
+                                      "result":  {
+                                                     "exitCode":  0,
+                                                     "ms":  1009.6,
+                                                     "svgCount":  3,
+                                                     "files":  [
+                                                                   {
+                                                                       "file":  "root.svg",
+                                                                       "bytes":  482632
+                                                                   },
+                                                                   {
+                                                                       "file":  "root-MCU.svg",
+                                                                       "bytes":  1465165
+                                                                   },
+                                                                   {
+                                                                       "file":  "root-Power Supply.svg",
+                                                                       "bytes":  1462798
+                                                                   }
+                                                               ],
+                                                     "plotOrder":  [
+                                                                       "root.svg",
+                                                                       "root-MCU.svg",
+                                                                       "root-Power Supply.svg"
+                                                                   ],
+                                                     "stdout":  "\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_M3_retarget\\root.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_M3_retarget\\root-MCU.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_M3_retarget\\root-Power Supply.svg\u0027에 플롯됨.\r\n완료.",
+                                                     "stderr":  ""
+                                                 }
+                                  },
+                                  {
+                                      "mutation":  "M4 add",
+                                      "note":  "third sheet Extra added as page 4 (aux is a reserved Windows device name, hence \u0027extra\u0027)",
+                                      "layout":  [
+                                                     "Power Supply -\u003e power.kicad_sch page 3",
+                                                     "MCU -\u003e power.kicad_sch page 2",
+                                                     "Extra -\u003e extra.kicad_sch page 4"
+                                                 ],
+                                      "result":  {
+                                                     "exitCode":  0,
+                                                     "ms":  1010.5,
+                                                     "svgCount":  4,
+                                                     "files":  [
+                                                                   {
+                                                                       "file":  "root.svg",
+                                                                       "bytes":  492104
+                                                                   },
+                                                                   {
+                                                                       "file":  "root-Extra.svg",
+                                                                       "bytes":  1456813
+                                                                   },
+                                                                   {
+                                                                       "file":  "root-MCU.svg",
+                                                                       "bytes":  1464615
+                                                                   },
+                                                                   {
+                                                                       "file":  "root-Power Supply.svg",
+                                                                       "bytes":  1462248
+                                                                   }
+                                                               ],
+                                                     "plotOrder":  [
+                                                                       "root.svg",
+                                                                       "root-MCU.svg",
+                                                                       "root-Power Supply.svg",
+                                                                       "root-Extra.svg"
+                                                                   ],
+                                                     "stdout":  "\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_M4_add\\root.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_M4_add\\root-MCU.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_M4_add\\root-Power Supply.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_M4_add\\root-Extra.svg\u0027에 플롯됨.\r\n완료.",
+                                                     "stderr":  ""
+                                                 }
+                                  },
+                                  {
+                                      "mutation":  "M5 remove",
+                                      "note":  "Power Supply (page 3 after M2 swap) removed -\u003e page gap 1,2,4",
+                                      "layout":  [
+                                                     "MCU -\u003e power.kicad_sch page 2",
+                                                     "Extra -\u003e extra.kicad_sch page 4"
+                                                 ],
+                                      "result":  {
+                                                     "exitCode":  0,
+                                                     "ms":  1010.1,
+                                                     "svgCount":  3,
+                                                     "files":  [
+                                                                   {
+                                                                       "file":  "root.svg",
+                                                                       "bytes":  478389
+                                                                   },
+                                                                   {
+                                                                       "file":  "root-Extra.svg",
+                                                                       "bytes":  1457363
+                                                                   },
+                                                                   {
+                                                                       "file":  "root-MCU.svg",
+                                                                       "bytes":  1465165
+                                                                   }
+                                                               ],
+                                                     "plotOrder":  [
+                                                                       "root.svg",
+                                                                       "root-MCU.svg",
+                                                                       "root-Extra.svg"
+                                                                   ],
+                                                     "stdout":  "\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_M5_remove\\root.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_M5_remove\\root-MCU.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_M5_remove\\root-Extra.svg\u0027에 플롯됨.\r\n완료.",
+                                                     "stderr":  ""
+                                                 }
+                                  },
+                                  {
+                                      "mutation":  "M5b --pages probe on gapped design",
+                                      "note":  "on M5 layout: --pages 2 vs --pages 3",
+                                      "probes":  [
+                                                     {
+                                                         "exitCode":  0,
+                                                         "ms":  1011.6,
+                                                         "svgCount":  1,
+                                                         "files":  [
+                                                                       {
+                                                                           "file":  "root.svg",
+                                                                           "bytes":  478389
+                                                                       }
+                                                                   ],
+                                                         "plotOrder":  [
+                                                                           "root.svg"
+                                                                       ],
+                                                         "stdout":  "\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_probe_p2\\root.svg\u0027에 플롯됨.\r\n완료.",
+                                                         "stderr":  ""
+                                                     },
+                                                     {
+                                                         "exitCode":  0,
+                                                         "ms":  1010.3,
+                                                         "svgCount":  1,
+                                                         "files":  [
+                                                                       {
+                                                                           "file":  "root.svg",
+                                                                           "bytes":  478389
+                                                                       }
+                                                                   ],
+                                                         "plotOrder":  [
+                                                                           "root.svg"
+                                                                       ],
+                                                         "stdout":  "\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_probe_p3\\root.svg\u0027에 플롯됨.\r\n완료.",
+                                                         "stderr":  ""
+                                                     }
+                                                 ]
+                                  }
+                              ],
+    "item5_childOnlyEdit":  {
+                                "rootFileUntouched":  true,
+                                "mcuSvgChanged":  true,
+                                "hashBefore":  "root.svg=188c7ef",
+                                "hashAfter":  "root.svg=8519e9a",
+                                "export":  {
+                                               "exitCode":  0,
+                                               "ms":  1009.8,
+                                               "svgCount":  3,
+                                               "files":  [
+                                                             {
+                                                                 "file":  "root.svg",
+                                                                 "bytes":  478549
+                                                             },
+                                                             {
+                                                                 "file":  "root-MCU.svg",
+                                                                 "bytes":  1461535
+                                                             },
+                                                             {
+                                                                 "file":  "root-Power.svg",
+                                                                 "bytes":  1459288
+                                                             }
+                                                         ],
+                                               "plotOrder":  [
+                                                                 "root.svg",
+                                                                 "root-Power.svg",
+                                                                 "root-MCU.svg"
+                                                             ],
+                                               "stdout":  "\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item5\\case_b\\out_after\\root.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item5\\case_b\\out_after\\root-Power.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item5\\case_b\\out_after\\root-MCU.svg\u0027에 플롯됨.\r\n완료.",
+                                               "stderr":  ""
+                                           }
+                            },
+    "item6_latency":  [
+                          {
+                              "pages":  1,
+                              "childInstances":  0,
+                              "runsMs":  [
+                                             1012.8,
+                                             1011,
+                                             1011.9
+                                         ],
+                              "meanMs":  1011.9,
+                              "minMs":  1011,
+                              "maxMs":  1012.8,
+                              "spreadMs":  1.8
+                          },
+                          {
+                              "pages":  5,
+                              "childInstances":  4,
+                              "runsMs":  [
+                                             1010,
+                                             1009.7,
+                                             1011.3
+                                         ],
+                              "meanMs":  1010.3,
+                              "minMs":  1009.7,
+                              "maxMs":  1011.3,
+                              "spreadMs":  1.6
+                          },
+                          {
+                              "pages":  10,
+                              "childInstances":  9,
+                              "runsMs":  [
+                                             1009.8,
+                                             1010.9,
+                                             1010.3
+                                         ],
+                              "meanMs":  1010.3,
+                              "minMs":  1009.8,
+                              "maxMs":  1010.9,
+                              "spreadMs":  1.1
+                          },
+                          {
+                              "pages":  20,
+                              "childInstances":  19,
+                              "runsMs":  [
+                                             1012.6,
+                                             1011.2,
+                                             1009.7
+                                         ],
+                              "meanMs":  1011.2,
+                              "minMs":  1009.7,
+                              "maxMs":  1012.6,
+                              "spreadMs":  2.9
+                          }
+                      ],
+    "item7_missingChild":  {
+                               "removedFile":  "extra.kicad_sch",
+                               "pagesProbe":  {
+                                                  "exitCode":  0,
+                                                  "ms":  1010.3,
+                                                  "svgCount":  1,
+                                                  "files":  [
+                                                                {
+                                                                    "file":  "root.svg",
+                                                                    "bytes":  478389
+                                                                }
+                                                            ],
+                                                  "plotOrder":  [
+                                                                    "root.svg"
+                                                                ],
+                                                  "stdout":  "\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_missing\\root.svg\u0027에 플롯됨.\r\n완료.",
+                                                  "stderr":  ""
+                                              },
+                               "fullExport":  {
+                                                  "exitCode":  0,
+                                                  "ms":  1012.5,
+                                                  "svgCount":  3,
+                                                  "files":  [
+                                                                {
+                                                                    "file":  "root.svg",
+                                                                    "bytes":  478389
+                                                                },
+                                                                {
+                                                                    "file":  "root-Extra.svg",
+                                                                    "bytes":  56797
+                                                                },
+                                                                {
+                                                                    "file":  "root-MCU.svg",
+                                                                    "bytes":  1465165
+                                                                }
+                                                            ],
+                                                  "plotOrder":  [
+                                                                    "root.svg",
+                                                                    "root-MCU.svg",
+                                                                    "root-Extra.svg"
+                                                                ],
+                                                  "stdout":  "\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_missing_all\\root.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_missing_all\\root-MCU.svg\u0027에 플롯됨.\r\n\u0027C:\\Users\\bigbi\\AppData\\Local\\Temp\\pcbo-sch-stage0\\item4\\case_e\\out_missing_all\\root-Extra.svg\u0027에 플롯됨.\r\n완료.",
+                                                  "stderr":  ""
+                                              }
+                           },
+    "finishedUtc":  "2026-09-26T17:01:02.0249340Z"
+}
