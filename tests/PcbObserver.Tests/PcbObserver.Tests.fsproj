@@ -10,6 +10,7 @@
     <Compile Include="WatchTests.fs" />
     <Compile Include="QueueTests.fs" />
     <Compile Include="StoreTests.fs" />
+    <Compile Include="SchTests.fs" />
     <Compile Include="ServerTests.fs" />
   </ItemGroup>
 

@@ -8,6 +8,7 @@
   <ItemGroup>
     <Compile Include="Capture.fs" />
     <Compile Include="Render.fs" />
+    <Compile Include="Sch.fs" />
     <Compile Include="Watch.fs" />
     <Compile Include="Store.fs" />
     <Compile Include="Queue.fs" />
