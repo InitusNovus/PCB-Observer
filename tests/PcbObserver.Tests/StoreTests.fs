@@ -4,10 +4,13 @@ open System
 open System.IO
 open System.Text.Json
 open PcbObserver.Capture
+open PcbObserver.Render
 open PcbObserver.Store
 open PcbObserver.Tests
 open Xunit
 
+/// Writes the first `layersToWrite` SVGs plus a manifest listing the FULL
+/// default set — mirrors a render that died partway (partial = incomplete).
 let writeBundle (dir: string) (layersToWrite: int) =
     for l in layers |> Array.truncate layersToWrite do
         File.WriteAllText(Path.Combine(dir, $"{l}.svg"), "<svg/>")
@@ -19,7 +22,21 @@ let writeBundle (dir: string) (layersToWrite: int) =
           capturedAt = DateTime.UtcNow
           captureStatus = "stable" }
 
-    Store(dir).WriteManifest(dir, snap, "C:/src/board.kicad_pcb", "kicad-cli", "test") // manifest via any store instance
+    Store(dir).WriteManifest(dir, snap, "C:/src/board.kicad_pcb", "kicad-cli", "test", layers)
+
+/// Legacy-shape bundle: manifest lists exactly the layers it has.
+let writeSelfDescribedBundle (dir: string) (layerSet: string[]) =
+    for l in layerSet do
+        File.WriteAllText(Path.Combine(dir, $"{l}.svg"), "<svg/>")
+
+    let snap =
+        { sequence = Int32.Parse(Path.GetFileName dir)
+          sha256 = $"hash-{Path.GetFileName dir}"
+          path = $"C:/snap/{Path.GetFileName dir}.kicad_pcb"
+          capturedAt = DateTime.UtcNow
+          captureStatus = "stable" }
+
+    Store(dir).WriteManifest(dir, snap, "C:/src/board.kicad_pcb", "kicad-cli", "test", layerSet)
 
 [<Fact>]
 let ``partial bundle is not published and staging is cleaned (AT-005)`` () =
@@ -28,7 +45,7 @@ let ``partial bundle is not published and staging is cleaned (AT-005)`` () =
     try
         let store = Store(Path.Combine(root, "project"))
         let staging = store.StagingFor 1
-        writeBundle staging 3 // only three of five layers
+        writeBundle staging 3 // partial render: 3 of the default layers
 
         Assert.False(store.PublishBundle 1)
         Assert.False(Directory.Exists staging)
@@ -43,12 +60,26 @@ let ``complete bundle publishes atomically via directory rename`` () =
     try
         let store = Store(Path.Combine(root, "project"))
         let staging = store.StagingFor 7
-        writeBundle staging 5
+        writeBundle staging layers.Length
 
         Assert.True(store.PublishBundle 7)
         Assert.False(Directory.Exists staging) // moved, not copied
         Assert.True(File.Exists(Path.Combine(store.BundlePath 7, "F.Cu.svg")))
         Assert.Equal<int>([ 7 ], store.CompleteBundles())
+    finally
+        Directory.Delete(root, true)
+[<Fact>]
+let ``legacy self-described bundle with smaller layer set stays complete`` () =
+    let root = tempDir ()
+
+    try
+        let store = Store(Path.Combine(root, "project"))
+        let legacy = [|"F.Cu"; "B.Cu"; "Edge.Cuts"; "F.Silkscreen"; "B.Silkscreen"|]
+        let staging = store.StagingFor 9
+        writeSelfDescribedBundle staging legacy
+
+        Assert.True(store.PublishBundle 9)
+        Assert.Equal<int>([ 9 ], store.CompleteBundles())
     finally
         Directory.Delete(root, true)
 
@@ -72,7 +103,7 @@ let ``sequence recovery prefers renders scan over stale metadata (A1/D1)`` () =
         let renders = Path.Combine(root, "project", "renders", "7")
         Directory.CreateDirectory renders |> ignore
         // Crash-after-publish state: renders/7 exists complete, metadata lags at 3.
-        writeBundle renders 5
+        writeBundle renders layers.Length
 
         Assert.Equal(8, store.NextSequence())
     finally
@@ -120,7 +151,7 @@ let ``history cap protects last published and recent complete bundles (A5)`` () 
 
         for seq in 1 .. 55 do
             let staging = store.StagingFor seq
-            writeBundle staging 5
+            writeBundle staging layers.Length
             Assert.True(store.PublishBundle seq, $"bundle {seq} should publish")
 
         Assert.Equal(55, store.CompleteBundles().Length)
@@ -147,7 +178,7 @@ let ``store never writes into the source directory (AT-010)`` () =
 
         let store = Store(Path.Combine(root, "observer-store"))
         let staging = store.StagingFor 1
-        writeBundle staging 5
+        writeBundle staging layers.Length
 
         let before = Directory.GetFileSystemEntries(sourceDir, "*", SearchOption.AllDirectories)
 

@@ -5,9 +5,7 @@ open System.IO
 open System.Text.Json
 open PcbObserver.Capture
 
-/// Layer set rendered per bundle — single source of truth lives in Render.fs;
-/// this alias keeps call sites stable without drifting copies.
-let layers = Render.layers
+open PcbObserver.Render
 
 let private jsonOptions = JsonSerializerOptions(WriteIndented = true)
 
@@ -105,15 +103,17 @@ type Store(projectRoot: string) =
         Directory.CreateDirectory dir |> ignore
         dir
 
-    /// §39 Render Bundle manifest with pinned field names (C7).
-    member this.WriteManifest(stagingDir: string, snap: Snapshot, sourcePath: string, rendererKind: string, rendererVersion: string) : unit =
+    /// §39 Render Bundle manifest with pinned field names (C7). The manifest
+    /// is written AFTER rendering and self-describes the layer set actually
+    /// rendered, so completeness never depends on a global constant.
+    member this.WriteManifest(stagingDir: string, snap: Snapshot, sourcePath: string, rendererKind: string, rendererVersion: string, renderedLayers: string[]) : unit =
         let manifest =
             {| snapshot_sequence = snap.sequence
                content_hash = snap.sha256
                source_path = sourcePath
                renderer = {| kind = rendererKind; version = rendererVersion |}
                created_at = snap.capturedAt.ToString("o")
-               layers = layers
+               layers = renderedLayers
                status = "complete" |}
 
         File.WriteAllText(Path.Combine(stagingDir, "manifest.json"), JsonSerializer.Serialize(manifest, jsonOptions))
@@ -133,10 +133,24 @@ type Store(projectRoot: string) =
         File.WriteAllText(tmp, json)
         File.Move(tmp, metadataPath, true)
 
-    /// Completeness gate before publication (AT-005).
+    /// Completeness gate before publication (AT-005). Manifest-driven: a
+    /// bundle is complete when its own manifest exists and every layer it
+    /// lists is present — legacy bundles with smaller sets stay complete.
     member this.IsBundleComplete(dir: string) : bool =
-        layers |> Array.forall (fun l -> File.Exists(Path.Combine(dir, $"{l}.svg")))
-        && File.Exists(Path.Combine(dir, "manifest.json"))
+        let manifestPath = Path.Combine(dir, "manifest.json")
+
+        if not (File.Exists manifestPath) then
+            false
+        else
+            try
+                use doc = JsonDocument.Parse(File.ReadAllText manifestPath)
+
+                doc.RootElement.GetProperty("layers").EnumerateArray()
+                |> Seq.forall (fun l ->
+                    let name = l.GetString()
+                    not (isNull name) && File.Exists(Path.Combine(dir, $"{name}.svg")))
+            with _ ->
+                false
 
     /// Atomic publish: directory rename staging/<seq> → renders/<seq>.
     /// Monotonic seq makes the target unique (R5).

@@ -188,33 +188,37 @@ let private runWatch (argv: string list) : int =
             (cli: string option)
             (port: int option)
             (debounce: int option)
+            (layersOpt: string option)
             =
         match xs with
-        | [] -> Ok(pcb, output, cli, port, debounce)
-        | "--output" :: v :: rest -> parse rest pcb (Some v) cli port debounce
-        | "--cli" :: v :: rest -> parse rest pcb output (Some v) port debounce
+        | [] -> Ok(pcb, output, cli, port, debounce, layersOpt)
+        | "--output" :: v :: rest -> parse rest pcb (Some v) cli port debounce layersOpt
+        | "--cli" :: v :: rest -> parse rest pcb output (Some v) port debounce layersOpt
         | "--port" :: v :: rest ->
             match Int32.TryParse v with
-            | true, p -> parse rest pcb output cli (Some p) debounce
+            | true, p -> parse rest pcb output cli (Some p) debounce layersOpt
             | _ -> Error $"Invalid --port: {v}"
         | "--debounce-ms" :: v :: rest ->
             match Int32.TryParse v with
-            | true, d when d > 0 -> parse rest pcb output cli port (Some d)
+            | true, d when d > 0 -> parse rest pcb output cli port (Some d) layersOpt
             | _ -> Error $"Invalid --debounce-ms: {v}"
+        | "--layers" :: v :: rest -> parse rest pcb output cli port debounce (Some v)
         | flag :: _ when flag.StartsWith "-" -> Error $"Unknown option: {flag}"
         | path :: rest ->
             if pcb.IsSome then Error "Multiple PCB paths given"
-            else parse rest (Some path) output cli port debounce
+            else parse rest (Some path) output cli port debounce layersOpt
 
-    match parse argv None None None (Some 8765) (Some 500) with
+    let usage = "usage: PcbObserver watch <board.kicad_pcb> [--output DIR] [--cli PATH] [--port N] [--debounce-ms N] [--layers A,B,..]"
+
+    match parse argv None None None (Some 8765) (Some 500) None with
     | Error message ->
         eprintfn "%s" message
-        eprintfn "usage: PcbObserver watch <board.kicad_pcb> [--output DIR] [--cli PATH] [--port N] [--debounce-ms N]"
+        eprintfn "%s" usage
         2
-    | Ok(None, _, _, _, _) ->
-        eprintfn "usage: PcbObserver watch <board.kicad_pcb> [--output DIR] [--cli PATH] [--port N] [--debounce-ms N]"
+    | Ok(None, _, _, _, _, _) ->
+        eprintfn "%s" usage
         2
-    | Ok(Some pcbPath, outputOpt, cliOpt, portOpt, debounceOpt) ->
+    | Ok(Some pcbPath, outputOpt, cliOpt, portOpt, debounceOpt, layersOpt) ->
         let source = Path.GetFullPath pcbPath
 
         if String.Equals(Path.GetExtension source, ".kicad_pcb", StringComparison.OrdinalIgnoreCase)
@@ -256,10 +260,21 @@ let private runWatch (argv: string list) : int =
                 let state = LiveState()
                 let mutable lastPublished = 0
 
+                // Rendered layer set for this run: --layers override or the
+                // full default set. The manifest self-describes it.
+                let layerSet =
+                    match layersOpt with
+                    | Some spec ->
+                        let picked = spec.Split(',') |> Array.map (fun s -> s.Trim()) |> Array.filter (fun s -> s <> "")
+
+                        if picked.Length = 0 then invalidArg "--layers" "empty layer list"
+                        picked
+                    | None -> Render.layers
+
                 let runRender (snap: Snapshot) : unit =
                     let staging = store.StagingFor snap.sequence
-                    renderLayers runKiCad cliPath snap.path staging layers
-                    store.WriteManifest(staging, snap, source, "kicad-cli", rendererVersion)
+                    renderLayers runKiCad cliPath snap.path staging layerSet
+                    store.WriteManifest(staging, snap, source, "kicad-cli", rendererVersion, layerSet)
 
                 let onComplete (snap: Snapshot) : unit =
                     let published =

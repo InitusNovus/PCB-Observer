@@ -4,11 +4,26 @@ open System
 open System.Diagnostics
 open System.IO
 
-let layers = [| "F.Cu"; "B.Cu"; "Edge.Cuts"; "F.Silkscreen"; "B.Silkscreen" |]
+/// Default rendered layer set (user-requested extension: mask/paste/fab/comments
+/// on top of the spec §11.1 first-class five). Override per run via watch --layers.
+let layers =
+    [| "F.Cu"
+       "B.Cu"
+       "Edge.Cuts"
+       "F.Silkscreen"
+       "B.Silkscreen"
+       "F.Mask"
+       "B.Mask"
+       "F.Paste"
+       "B.Paste"
+       "F.Fab"
+       "B.Fab"
+       "Cmts.User" |]
 
 /// Run kicad-cli, fail on non-zero exit or 120s timeout (mirrors check=True + timeout).
 let runKiCad (cli: string) (args: string[]) : unit =
     let psi = ProcessStartInfo(cli)
+
     for arg in args do
         psi.ArgumentList.Add arg
 
