@@ -8,11 +8,19 @@
   <ItemGroup>
     <Compile Include="Capture.fs" />
     <Compile Include="Render.fs" />
+    <Compile Include="Watch.fs" />
+    <Compile Include="Store.fs" />
+    <Compile Include="Queue.fs" />
+    <Compile Include="Server.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
   <ItemGroup>
     <Content Include="viewer.html" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
 </Project>

@@ -1,31 +1,163 @@
 <!doctype html>
-<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PCB Observer · Phase 0</title>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KiCad Observer · Phase 1</title>
 <style>
   html,body{margin:0;height:100%;background:#151a20;color:#e5edf5;font:14px system-ui,sans-serif}
-  body{display:flex;flex-direction:column} header{padding:10px 16px;display:flex;align-items:center;gap:14px;background:#222b36}
-  header strong{margin-right:auto} button,select{background:#344354;color:inherit;border:1px solid #62758a;border-radius:5px;padding:6px;cursor:pointer}
-  #viewport{flex:1;overflow:hidden;position:relative;cursor:grab;touch-action:none} #viewport:active{cursor:grabbing}
-  #board{position:absolute;left:50%;top:50%;max-width:none;width:min(85vw,1100px);transform-origin:center center;pointer-events:none;user-select:none}
-  footer{padding:7px 16px;color:#a7b7c8;background:#222b36}
+  body{display:flex;flex-direction:column}
+  header{padding:8px 14px;display:flex;align-items:center;gap:12px;background:#222b36;flex-wrap:wrap}
+  header strong{margin-right:auto}
+  button,select{background:#344354;color:inherit;border:1px solid #62758a;border-radius:5px;padding:5px 9px;cursor:pointer}
+  button.active{background:#4b6b8f;border-color:#7fa3d1}
+  #badge{padding:5px 10px;border-radius:5px;background:#1d3a26;border:1px solid #2f6f45;font-weight:600;white-space:nowrap}
+  #badge.hold{background:#3a331d;border-color:#6f5f2f}
+  #badge.error{background:#3a1d1d;border-color:#6f2f2f}
+  #badge.history{background:#2a2333;border-color:#57456f}
+  #layers{display:flex;gap:8px;align-items:center}
+  #layers label{display:flex;gap:4px;align-items:center;color:#a7b7c8;cursor:pointer}
+  #viewport{flex:1;overflow:hidden;position:relative;cursor:grab;touch-action:none}
+  #viewport:active{cursor:grabbing}
+  #stack{position:absolute;left:50%;top:50%;width:min(85vw,1100px);transform-origin:center center;pointer-events:none;user-select:none}
+  #stack img{position:absolute;left:0;top:0;width:100%;max-width:none;display:none}
+  #stack img.on{display:block}
+  footer{padding:6px 14px;color:#a7b7c8;background:#222b36;display:flex;gap:18px;flex-wrap:wrap}
+  #history{position:absolute;right:10px;top:10px;background:#222b36ee;border:1px solid #62758a;border-radius:6px;padding:8px;max-height:70%;overflow:auto;display:none;z-index:5}
+  #history button{display:block;width:100%;margin:3px 0;text-align:left}
+  #notice{position:absolute;left:50%;top:12px;transform:translateX(-50%);background:#5a2d2d;border-radius:6px;padding:6px 12px;display:none;z-index:6}
 </style>
-<header><strong>PCB Observer · Phase 0</strong><label>Layer <select id="layer"></select></label>
-<button id="side">Front view</button><button id="fit">Reset view</button></header>
-<div id="viewport"><img id="board" alt="KiCad PCB layer"></div>
-<footer id="status">Static render · not live · no source modifications</footer>
+<header>
+  <strong>KiCad Observer</strong>
+  <span id="badge">connecting…</span>
+  <button id="hold">HOLD</button>
+  <button id="latest" title="Return to newest completed render">Latest</button>
+  <button id="historyBtn">HISTORY</button>
+  <span id="layers">
+    <label><input type="radio" name="cu" value="F.Cu" checked>F.Cu</label>
+    <label><input type="radio" name="cu" value="B.Cu">B.Cu</label>
+    <label><input type="checkbox" data-layer="Edge.Cuts" checked>Edge</label>
+    <label><input type="checkbox" data-layer="F.Silkscreen" checked>F.Silk</label>
+    <label><input type="checkbox" data-layer="B.Silkscreen" checked>B.Silk</label>
+  </span>
+  <button id="side">Back</button>
+  <button id="fit">Reset view</button>
+</header>
+<div id="viewport">
+  <div id="stack"></div>
+  <div id="history"></div>
+  <div id="notice"></div>
+</div>
+<footer><span id="f-source">—</span><span id="f-captured">—</span><span id="f-render">—</span><span>Static? No — LIVE via SSE · observer only · source never modified</span></footer>
 <script>
-const layers=['F.Cu','B.Cu','Edge.Cuts','F.Silkscreen','B.Silkscreen'];
-const layer=document.querySelector('#layer'), board=document.querySelector('#board'), view=document.querySelector('#viewport');
-for(const name of layers){const option=document.createElement('option');option.value=name;option.textContent=name;layer.append(option)}
-layer.addEventListener('change',()=>{board.src=encodeURIComponent(layer.value)+'.svg'});
-layer.dispatchEvent(new Event('change'));
+'use strict';
+const LAYERS=['F.Cu','B.Cu','Edge.Cuts','F.Silkscreen','B.Silkscreen'];
+const stack=document.querySelector('#stack'),viewport=document.querySelector('#viewport');
+const badge=document.querySelector('#badge'),notice=document.querySelector('#notice');
+const historyPanel=document.querySelector('#history');
+const imgs={};for(const name of LAYERS){const img=document.createElement('img');img.alt=name;img.onerror=()=>assetMissing(name);stack.append(img);imgs[name]=img}
+
 let zoom=1,x=0,y=0,back=false,drag=null;
-function apply(){board.style.transform=`translate(${x}px,${y}px) scale(${back?-zoom:zoom},${zoom})`}
-view.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(.2,Math.min(20,zoom*(e.deltaY<0?1.15:1/1.15)));apply()},{passive:false});
-view.addEventListener('pointerdown',e=>{drag=[e.clientX-x,e.clientY-y];view.setPointerCapture(e.pointerId)});
-view.addEventListener('pointermove',e=>{if(drag){x=e.clientX-drag[0];y=e.clientY-drag[1];apply()}});
-view.addEventListener('pointerup',()=>drag=null);view.addEventListener('pointercancel',()=>drag=null);
-document.querySelector('#fit').onclick=()=>{zoom=1;x=y=0;apply()};
-document.querySelector('#side').onclick=e=>{back=!back;e.target.textContent=back?'Back view':'Front view';apply()};
-apply();
-</script></html>
+let displayed=0,liveSeq=0,hold=false,seqCount=0;
+let lastSource='—',lastCaptured=null,lastRender=null;
+
+function applyView(){const sx=back?-zoom:zoom;stack.style.transform=`translate(${x}px,${y}px) scale(${sx},${zoom})`}
+function noticeFor(sec){notice.textContent=sec;notice.style.display='block';setTimeout(()=>notice.style.display='none',4000)}
+function applyLayerVisibility(){
+  const cu=document.querySelector('input[name=cu]:checked').value;
+  for(const name of LAYERS){
+    let on;
+    if(name==='F.Cu'||name==='B.Cu')on=name===cu;
+    else on=document.querySelector(`input[data-layer="${name}"]`).checked;
+    imgs[name].classList.toggle('on',on);
+  }
+}
+document.querySelectorAll('input[name=cu]').forEach(r=>r.addEventListener('change',applyLayerVisibility));
+document.querySelectorAll('input[data-layer]').forEach(c=>c.addEventListener('change',applyLayerVisibility));
+
+// FR-008/AT-005: one-tick bundle switch — every visible layer's src swaps together.
+function showSeq(seq){
+  displayed=seq;
+  for(const name of LAYERS){
+    const img=imgs[name];
+    img.removeAttribute('src');
+    img.dataset.pending=`/renders/${seq}/${encodeURIComponent(name)}.svg`;
+  }
+  for(const name of LAYERS){
+    const img=imgs[name];
+    if(img.dataset.pending){img.src=img.dataset.pending;delete img.dataset.pending}
+  }
+  renderBadge();
+}
+function assetMissing(){
+  noticeFor('번들이 정리되었습니다 — 최신으로 이동합니다');
+  goLatest();
+}
+function renderBadge(){
+  // §19 five states; wording matches the real policy (A3: no auto-retry).
+  if(!liveSeq){setBadge('connecting…','');return}
+  if(displayed!==liveSeq&&hold){setBadge(`HOLD · displaying #${displayed} · latest #${liveSeq}`,'hold')}
+  else if(displayed!==liveSeq){setBadge(`HISTORY · displaying #${displayed} · latest #${liveSeq}`,'history')}
+  else if(lastRender&&lastError){setBadge(`Displaying #${displayed} · render failed · will update on next save`,'error')}
+  else if(lastRender&&lastCaptured&&lastCaptured.sequence>lastRender.sequence){
+    setBadge(`LIVE · displaying #${lastRender.sequence} · rendering #${lastCaptured.sequence}…`,'')}
+  else if(lastSource&&lastSource.includes('waiting')){setBadge('Source changed · waiting stable…','')}
+  else if(lastSource&&lastSource.includes('unstable')){setBadge('Source changed · waiting stable…','')}
+  else{setBadge(`LIVE · #${liveSeq}`,'')}
+  document.querySelector('#f-source').textContent=`source: ${lastSource}`;
+  document.querySelector('#f-captured').textContent=lastCaptured?`captured: #${lastCaptured.sequence} ${lastCaptured.captured_at}`:'captured: —';
+  document.querySelector('#f-render').textContent=lastRender?`render: #${lastRender.sequence} ${lastRender.created_at}`:'render: —';
+}
+let lastError=null;
+function setBadge(text,cls){badge.textContent=text;badge.className=cls}
+function refreshFromState(){
+  fetch('/api/state').then(r=>r.json()).then(s=>{
+    lastSource=s.source_last_event;lastCaptured=s.latest_captured_snapshot;lastRender=s.latest_completed_render;lastError=s.last_error;
+    seqCount=(s.latest_captured_snapshot?s.latest_captured_snapshot.sequence:0);
+    if(s.latest_completed_render)liveSeq=s.latest_completed_render.sequence;
+    if(!hold&&liveSeq&&displayed!==liveSeq)showSeq(liveSeq);else renderBadge();
+  });
+}
+// A9: subscribe FIRST, then fetch state — never miss a publish between the two.
+const es=new EventSource('/api/events');
+es.addEventListener('state',refreshFromState);
+es.addEventListener('bundle',refreshFromState);
+es.onopen=refreshFromState;
+refreshFromState();
+
+document.querySelector('#hold').onclick=e=>{
+  hold=!hold;
+  e.target.textContent=hold?'HOLD ✓':'HOLD';
+  e.target.classList.toggle('active',hold);
+  renderBadge();
+};
+function goLatest(){
+  hold=false;
+  const h=document.querySelector('#hold');h.textContent='HOLD';h.classList.remove('active');
+  historyPanel.style.display='none';
+  if(liveSeq)showSeq(liveSeq);
+}
+document.querySelector('#latest').onclick=goLatest;
+document.querySelector('#historyBtn').onclick=async()=>{
+  if(historyPanel.style.display==='block'){historyPanel.style.display='none';return}
+  const rows=await fetch('/api/snapshots').then(r=>r.json());
+  historyPanel.textContent='';
+  // A4: only snapshots whose render completed — never a captured-but-skipped seq.
+  for(const row of rows.filter(r=>r.render_status==='complete')){
+    const b=document.createElement('button');
+    b.textContent=`#${row.sequence} · ${row.render_status}`;
+    b.onclick=()=>{historyPanel.style.display='none';showSeq(row.sequence)};
+    historyPanel.append(b);
+  }
+  historyPanel.style.display='block';
+};
+
+viewport.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(.2,Math.min(20,zoom*(e.deltaY<0?1.15:1/1.15)));applyView()},{passive:false});
+viewport.addEventListener('pointerdown',e=>{drag=[e.clientX-x,e.clientY-y];viewport.setPointerCapture(e.pointerId)});
+viewport.addEventListener('pointermove',e=>{if(drag){x=e.clientX-drag[0];y=e.clientY-drag[1];applyView()}});
+viewport.addEventListener('pointerup',()=>drag=null);
+viewport.addEventListener('pointercancel',()=>drag=null);
+document.querySelector('#fit').onclick=()=>{zoom=1;x=y=0;applyView()};
+document.querySelector('#side').onclick=e=>{back=!back;e.target.textContent=back?'Back ✓':'Back';applyView()};
+applyLayerVisibility();applyView();
+</script>
+</html>
