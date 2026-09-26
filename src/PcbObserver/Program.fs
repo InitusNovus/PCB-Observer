@@ -135,7 +135,16 @@ type private LiveState() =
         lock gate (fun () ->
             latestRendered <-
                 Some { sequence = seq; content_hash = hash; created_at = createdAt; status = "complete" }
+
             failedSeqs <- failedSeqs |> List.except [ seq ]
+
+            // A successful publish at or past the failed sequence supersedes
+            // the recorded failure (boundary review blocker: the §19 badge
+            // must not claim "render failed" forever after recovery).
+            lastError <-
+                match lastError with
+                | Some e when e.sequence >= seq -> lastError
+                | _ -> None
         )
 
     member _.RecordFailure seq reason =

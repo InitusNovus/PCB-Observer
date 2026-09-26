@@ -97,7 +97,7 @@ function renderBadge(){
   if(!liveSeq){setBadge('connecting…','');return}
   if(displayed!==liveSeq&&hold){setBadge(`HOLD · displaying #${displayed} · latest #${liveSeq}`,'hold')}
   else if(displayed!==liveSeq){setBadge(`HISTORY · displaying #${displayed} · latest #${liveSeq}`,'history')}
-  else if(lastRender&&lastError){setBadge(`Displaying #${displayed} · render failed · will update on next save`,'error')}
+  else if(lastError&&(!lastRender||lastError.sequence>lastRender.sequence)){setBadge(`Displaying #${displayed} · render failed · will update on next save`,'error')}
   else if(lastRender&&lastCaptured&&lastCaptured.sequence>lastRender.sequence){
     setBadge(`LIVE · displaying #${lastRender.sequence} · rendering #${lastCaptured.sequence}…`,'')}
   else if(lastSource&&lastSource.includes('waiting')){setBadge('Source changed · waiting stable…','')}
