@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PCB Observer · Phase 0</title>
+<style>
+  html,body{margin:0;height:100%;background:#151a20;color:#e5edf5;font:14px system-ui,sans-serif}
+  body{display:flex;flex-direction:column} header{padding:10px 16px;display:flex;align-items:center;gap:14px;background:#222b36}
+  header strong{margin-right:auto} button,select{background:#344354;color:inherit;border:1px solid #62758a;border-radius:5px;padding:6px;cursor:pointer}
+  #viewport{flex:1;overflow:hidden;position:relative;cursor:grab;touch-action:none} #viewport:active{cursor:grabbing}
+  #board{position:absolute;left:50%;top:50%;max-width:none;width:min(85vw,1100px);transform-origin:center center;pointer-events:none;user-select:none}
+  footer{padding:7px 16px;color:#a7b7c8;background:#222b36}
+</style>
+<header><strong>PCB Observer · Phase 0</strong><label>Layer <select id="layer"></select></label>
+<button id="side">Front view</button><button id="fit">Reset view</button></header>
+<div id="viewport"><img id="board" alt="KiCad PCB layer"></div>
+<footer id="status">Static render · not live · no source modifications</footer>
+<script>
+const layers=['F.Cu','B.Cu','Edge.Cuts','F.Silkscreen','B.Silkscreen'];
+const layer=document.querySelector('#layer'), board=document.querySelector('#board'), view=document.querySelector('#viewport');
+for(const name of layers){const option=document.createElement('option');option.value=name;option.textContent=name;layer.append(option)}
+layer.addEventListener('change',()=>{board.src=encodeURIComponent(layer.value)+'.svg'});
+layer.dispatchEvent(new Event('change'));
+let zoom=1,x=0,y=0,back=false,drag=null;
+function apply(){board.style.transform=`translate(${x}px,${y}px) scale(${back?-zoom:zoom},${zoom})`}
+view.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(.2,Math.min(20,zoom*(e.deltaY<0?1.15:1/1.15)));apply()},{passive:false});
+view.addEventListener('pointerdown',e=>{drag=[e.clientX-x,e.clientY-y];view.setPointerCapture(e.pointerId)});
+view.addEventListener('pointermove',e=>{if(drag){x=e.clientX-drag[0];y=e.clientY-drag[1];apply()}});
+view.addEventListener('pointerup',()=>drag=null);view.addEventListener('pointercancel',()=>drag=null);
+document.querySelector('#fit').onclick=()=>{zoom=1;x=y=0;apply()};
+document.querySelector('#side').onclick=e=>{back=!back;e.target.textContent=back?'Back view':'Front view';apply()};
+apply();
+</script></html>
