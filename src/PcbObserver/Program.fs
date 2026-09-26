@@ -465,7 +465,14 @@ let private runWatchSch (argv: string list) : int =
 
                 // Dynamic dependency set (SCH-FR-005): refreshed after each
                 // capture; the watcher re-queries the name set per fire.
-                let mutable discovered = Sch.discover source
+                // Tolerant startup discovery (run-2 review): a momentarily
+                // locked root must not crash watch-sch before the server
+                // starts; first capture re-discovers loudly either way.
+                let mutable discovered =
+                    try
+                        Sch.discover source
+                    with _ ->
+                        { root = source; files = [ source ]; edges = []; missing = [] }
 
                 let runRender (snap: Snapshot) : unit =
                     let staging = store.StagingFor snap.sequence

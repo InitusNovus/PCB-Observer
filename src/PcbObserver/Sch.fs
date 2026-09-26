@@ -195,11 +195,17 @@ let mapPages (disc: Discovery) : Page list * string list =
     pages.Add({ chain = []; file = $"{stem}.svg"; sheetFile = disc.root })
 
     let anomalies = ResizeArray<string>()
-    let queue = Queue<string * string list>()
-    queue.Enqueue(disc.root, [])
+
+    // Cycle guard (run-2 review): a cyclic Sheetfile reference must terminate
+    // as an anomaly, not loop the render thread forever. Ancestor sets make
+    // each path's history explicit while shared children stay legal.
+    let queue = Queue<string * string list * HashSet<string>>()
+    let rootAncestors = HashSet<string>()
+    rootAncestors.Add disc.root |> ignore
+    queue.Enqueue(disc.root, [], rootAncestors)
 
     while queue.Count > 0 do
-        let (parent, chain) = queue.Dequeue()
+        let (parent, chain, ancestors) = queue.Dequeue()
 
         match childrenOf.TryGetValue parent with
         | true, edges ->
@@ -207,11 +213,18 @@ let mapPages (disc: Discovery) : Page list * string list =
                 let childChain = chain @ [ edge.sheetName ]
                 let joined = String.Join("-", childChain)
                 let file = $"{stem}-{joined}.svg"
+
                 let childPath =
                     Path.GetFullPath(Path.Combine(Path.GetDirectoryName parent, edge.sheetFile))
 
                 pages.Add({ chain = childChain; file = file; sheetFile = childPath })
-                queue.Enqueue(childPath, childChain)
+
+                if ancestors.Contains childPath then
+                    anomalies.Add $"cyclic sheet reference: {edge.sheetFile} (from {Path.GetFileName parent})"
+                else
+                    let childAncestors = HashSet(ancestors)
+                    childAncestors.Add childPath |> ignore
+                    queue.Enqueue(childPath, childChain, childAncestors)
         | _ -> ()
 
     let duplicates =

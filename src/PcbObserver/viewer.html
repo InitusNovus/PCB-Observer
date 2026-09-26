@@ -107,23 +107,34 @@ function applyLayerVisibility(){
   }
 }
 
-// FR-008/AT-005: one-tick bundle switch — every visible layer's src swaps together.
-function showSeq(seq){
+// FR-008/AT-005: one-tick bundle switch — every visible layer's src swaps
+// together. The layer set comes from the bundle's self-describing manifest,
+// so --layers subset bundles never request files that do not exist (run-2
+// review: hardcoded 12-layer requests 404-looped on subset bundles).
+let manifestLayers=[];
+async function showSeq(seq){
   displayed=seq;
+  try{
+    const m=await fetch(`/renders/${seq}/manifest.json`).then(r=>r.ok?r.json():null);
+    manifestLayers=m&&Array.isArray(m.layers)?m.layers:[];
+  }catch(e){manifestLayers=[]}
   for(const name of LAYERS){
     const img=imgs[name];
+    img.onerror=null;
     img.removeAttribute('src');
-    img.dataset.pending=`/renders/${seq}/${encodeURIComponent(name)}.svg`;
   }
-  for(const name of LAYERS){
-    const img=imgs[name];
-    if(img.dataset.pending){img.src=img.dataset.pending;delete img.dataset.pending}
+  const wanted=LAYERS.filter(n=>manifestLayers.includes(n));
+  for(const name of wanted){
+    imgs[name].src=`/renders/${seq}/${encodeURIComponent(name)}.svg`;
+  }
+  for(const name of wanted){
+    imgs[name].onerror=()=>assetMissing(name);
   }
   renderBadge();
 }
 function assetMissing(){
   noticeFor('번들이 정리되었습니다 — 최신으로 이동합니다');
-  goLatest();
+  if(displayed===liveSeq)goLatest();
 }
 function setBadge(text,cls){badge.textContent=text;badge.className=cls}
 function renderBadge(){

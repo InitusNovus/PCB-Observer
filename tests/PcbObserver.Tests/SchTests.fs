@@ -153,3 +153,36 @@ let ``missing-child page flags missing even when an empty frame is emitted`` () 
     Assert.Equal("rendered", (rows |> Array.find (fun r -> r.chain = [|"Power"|])).status)
     Assert.Empty(anomalies)
     Assert.True(PcbObserver.SchPipeline.bundleIsPublishable rows)
+
+[<Fact>]
+let ``cyclic sheet reference terminates as anomaly, not infinite loop`` () =
+    let dir = copyCase "case_b_basic"
+    // power.kicad_sch now points back at root: root -> power -> root -> ...
+    let power = Path.Combine(dir, "power.kicad_sch")
+    let text = File.ReadAllText power
+    // Insert the cycle sheet just before the root form's final close paren.
+    let sheetBlock =
+        "\t(sheet\n\t\t(property \"Sheetname\" \"Back\"\n\t\t\t(at 1 2))\n\t\t(property \"Sheetfile\" \"root.kicad_sch\"\n\t\t\t(at 3 4))\n\t\t(uuid \"00000000-0000-0000-0000-00004b3a9999\")\n\t)\n"
+
+    let cyclic = text.Insert(text.LastIndexOf(')'), sheetBlock)
+    File.WriteAllText(power, cyclic)
+
+    let disc = discover (Path.Combine(dir, "root.kicad_sch"))
+    let pages, anomalies = mapPages disc
+    Assert.Contains(anomalies, fun a -> a.Contains "cyclic sheet reference")
+    // Terminates: finite page list (root, Power, MCU, Back + one Back child page).
+    Assert.True(pages.Length < 10, $"expected finite page set, got {pages.Length}")
+
+[<Fact>]
+let ``not-emitted page makes the bundle unpublishable`` () =
+    // Simulate a CLI that skips a page file entirely (no empty frame).
+    let dir = copyCase "case_a_flat"
+    let disc = discover (Path.Combine(dir, "root.kicad_sch"))
+    let pages, _ = mapPages disc
+    let staging = Path.Combine(dir, "out")
+    Directory.CreateDirectory staging |> ignore
+    // Emit nothing: the single root page is then "not-emitted".
+    let rows, anomalies = PcbObserver.SchPipeline.analyzePages disc pages staging
+    Assert.Equal("not-emitted", rows[0].status)
+    Assert.Single(anomalies) |> ignore
+    Assert.False(PcbObserver.SchPipeline.bundleIsPublishable rows)

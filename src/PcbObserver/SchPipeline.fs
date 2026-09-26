@@ -40,13 +40,31 @@ let captureSch (disc: Discovery) (cacheDir: string) (sequence: int) : SchSnapsho
     let id = Capture.sha256Hex(System.Text.Encoding.UTF8.GetBytes idSource)
     let target = Path.Combine(cacheDir, id)
 
+    // Atomic snapshot materialization (run-2 review): an interrupted copy
+    // must never poison the content-addressed dir that later identical
+    // captures would silently reuse. Copy to a staging sibling, then move.
     if not (Directory.Exists target) then
-        Directory.CreateDirectory target |> ignore
+        Directory.CreateDirectory cacheDir |> ignore
+
+        let staging =
+            let candidate = Path.Combine(cacheDir, $".tmp-{id}-{Guid.NewGuid():N}")
+            Directory.CreateDirectory candidate |> ignore
+            candidate
 
         for p in disc.files do
-            let dest = Path.Combine(target, rel p)
+            let dest = Path.Combine(staging, rel p)
             Directory.CreateDirectory(Path.GetDirectoryName dest) |> ignore
             File.Copy(p, dest, true)
+
+        try
+            Directory.Move(staging, target)
+        with _ ->
+            // Lost a race or target exists (identical content): keep the
+            // existing complete snapshot, drop our copy.
+            try
+                Directory.Delete(staging, true)
+            with _ ->
+                ()
 
     let status = if List.isEmpty disc.missing then "stable" else "missing-children"
 

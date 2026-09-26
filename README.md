@@ -25,6 +25,9 @@ dotnet run --project src/PcbObserver -- watch-sch 'C:\path\to\root.kicad_sch' [-
 # whole-design export from the root on every stable save; logical sheets keyed
 # by sheet-name chain (shared children render per instance); missing children
 # flagged explicitly; sheet list + per-sheet viewport memory + HOLD/HISTORY.
+# MVP scope: children in SUBDIRECTORIES render but their edits are not
+# watched (single-directory watch) — keep the hierarchy flat or expect
+# root-file saves to pick up child changes.
 ```
 
 Observer data lives under `%LOCALAPPDATA%\PCBObserver` (snapshots, atomic render bundles `renders/<seq>/`, metadata, size logs) — never inside the watched project. Render bundles publish by directory rename; history is capped (50, protecting the last-published + 10 most recent). The server binds 127.0.0.1 only. The viewer shows copper single-active (F.Cu/B.Cu radio) with non-copper overlays; multilayer composition/alignment (spec §11.2) stays a documented caveat. Back view is a horizontal mirror, not validated overlay geometry.
