@@ -43,7 +43,6 @@ type Debounce(debounceMs: int, activityCapMs: int, fire: unit -> unit) =
             else
                 false
 
-    member _.IsPending = lastDirty.HasValue
 
 /// Watches the directory containing `sourcePath` (not the file itself — AT-003
 /// rename/replace survives directory-level watches), filters by file name,
@@ -122,10 +121,6 @@ type DirectoryWatcher(sourcePath: string, ?debounceMs: int, ?activityCapMs: int,
 
     /// Raised on the thread that closed the debounce window.
     member _.Events: IObservable<WatchEvent> = changed.Publish
-
-    member _.CurrentState: WatchEvent =
-        if File.Exists(Path.Combine(directory, fileName)) then SourcePresent
-        else WaitingForSource
 
     interface IDisposable with
         member _.Dispose() =

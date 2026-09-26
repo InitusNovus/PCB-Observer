@@ -5,8 +5,9 @@ open System.IO
 open System.Text.Json
 open PcbObserver.Capture
 
-/// Layer set rendered per bundle (must match Render.layers).
-let layers = [| "F.Cu"; "B.Cu"; "Edge.Cuts"; "F.Silkscreen"; "B.Silkscreen" |]
+/// Layer set rendered per bundle — single source of truth lives in Render.fs;
+/// this alias keeps call sites stable without drifting copies.
+let layers = Render.layers
 
 let private jsonOptions = JsonSerializerOptions(WriteIndented = true)
 
@@ -72,7 +73,14 @@ type Store(projectRoot: string) =
                         content_hash = str "content_hash"
                         files = [| for f in el.GetProperty("files").EnumerateArray() -> f.GetString() |]
                         capture_status = str "capture_status" } ]
-            with _ ->
+            with e ->
+                // Preserve failure evidence instead of silently masking a
+                // corrupt metadata file (seq safety still holds via renders scan).
+                File.AppendAllLines(
+                    Path.Combine(logsDir, "metadata-errors.log"),
+                    [ $"{DateTime.UtcNow:o}\t{e.GetType().Name}: {e.Message}" ]
+                )
+
                 []
         else
             []
