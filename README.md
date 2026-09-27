@@ -44,4 +44,4 @@ Nested dependency watching verification: 39/39 tests passed; real KiCad
 child-only saves and dynamic directory retargeting published snapshots
 1 → 2 → 3 → 4 with three rendered pages. The child-only save left the root unchanged.
 
-Changes are committed locally. No Git remote is configured.
+Public repository: https://github.com/InitusNovus/PCB-Observer (`origin`, branch `main`).
