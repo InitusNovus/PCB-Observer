@@ -60,7 +60,12 @@ let start (viewerPath: string) (rendersRoot: string) (state: IStateHolder) (pref
 
         app.MapGet(
             "/",
-            Func<HttpContext, IResult>(fun _ -> Results.File(viewerPath, "text/html; charset=utf-8"))
+            Func<HttpContext, IResult>(fun ctx ->
+                // Viewer HTML must never be heuristically cached: rebuilds
+                // change the JS contract (run-2: stale tabs bounced history
+                // clicks back to live).
+                ctx.Response.Headers.CacheControl <- "no-store"
+                Results.File(viewerPath, "text/html; charset=utf-8"))
         )
         |> ignore
 
