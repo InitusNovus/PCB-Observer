@@ -20,6 +20,30 @@ let layers =
        "B.Fab"
        "Cmts.User" |]
 
+/// Extract the root <svg viewBox="..."> attribute (§11.2 layer-composition
+/// check). None when absent or the head is malformed.
+let viewBoxOf (svgPath: string) : string option =
+    try
+        use fs = File.OpenRead(svgPath)
+        let buffer = Array.zeroCreate<byte> 4096
+        let read = fs.Read(buffer, 0, buffer.Length)
+        let head = System.Text.Encoding.UTF8.GetString(buffer, 0, read)
+        let m = System.Text.RegularExpressions.Regex.Match(head, "<svg[^>]*?viewBox=\"([^\"]+)\"")
+
+        if m.Success then Some m.Groups[1].Value else None
+    with _ ->
+        None
+
+/// §11.2: layers compose exactly when they share one viewBox. Returns the
+/// common viewBox (Some) or None when any layer is missing or divergent.
+let commonViewBox (layerSvgs: (string * string option) list) : string option =
+    match layerSvgs with
+    | [] -> None
+    | xs when xs |> List.forall (snd >> Option.isSome) ->
+        let distinct = xs |> List.map (Option.get << snd) |> List.distinct
+        if distinct.Length = 1 then Some distinct.Head else None
+    | _ -> None
+
 /// Run kicad-cli, fail on non-zero exit or 120s timeout (mirrors check=True + timeout).
 let runKiCad (cli: string) (args: string[]) : unit =
     let psi = ProcessStartInfo(cli)

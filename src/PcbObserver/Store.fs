@@ -118,6 +118,52 @@ type Store(projectRoot: string) =
 
         File.WriteAllText(Path.Combine(stagingDir, "manifest.json"), JsonSerializer.Serialize(manifest, jsonOptions))
 
+    /// §11.2 layer-composition proof: same manifest shape, plus each layer's
+    /// recorded viewBox and a consistency flag. viewBoxes are optional so
+    /// legacy/unknown bundles stay readable; absent map => no extra fields.
+    member this.WriteManifestWithViewBoxes
+        (
+            stagingDir: string,
+            snap: Snapshot,
+            sourcePath: string,
+            rendererKind: string,
+            rendererVersion: string,
+            renderedLayers: string[],
+            layerViewBoxes: (string * string) list
+        ) : unit =
+        let viewBoxes = Map.ofList layerViewBoxes
+
+        let manifestJson =
+            if Map.isEmpty viewBoxes then
+                JsonSerializer.Serialize(
+                    {| snapshot_sequence = snap.sequence
+                       content_hash = snap.sha256
+                       source_path = sourcePath
+                       renderer = {| kind = rendererKind; version = rendererVersion |}
+                       created_at = snap.capturedAt.ToString("o")
+                       layers = renderedLayers
+                       status = "complete" |},
+                    jsonOptions
+                )
+            else
+                let distinct = layerViewBoxes |> List.map snd |> List.distinct
+                let consistent = distinct.Length = 1
+
+                JsonSerializer.Serialize(
+                    {| snapshot_sequence = snap.sequence
+                       content_hash = snap.sha256
+                       source_path = sourcePath
+                       renderer = {| kind = rendererKind; version = rendererVersion |}
+                       created_at = snap.capturedAt.ToString("o")
+                       layers = renderedLayers
+                       layer_view_boxes = [ for l in renderedLayers -> {| layer = l; view_box = Map.tryFind l viewBoxes |} ]
+                       view_box_consistent = consistent
+                       status = "complete" |},
+                    jsonOptions
+                )
+
+        File.WriteAllText(Path.Combine(stagingDir, "manifest.json"), manifestJson)
+
     /// §39 Snapshot metadata row, appended atomically (A1: temp + rename).
     member this.AppendSnapshot(snap: Snapshot, sourcePath: string) : unit =
         let rows = this.LoadSnapshots() |> List.map rowToJson
