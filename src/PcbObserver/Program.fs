@@ -3,6 +3,7 @@ module PcbObserver.Program
 open System
 open System.Diagnostics
 open System.IO
+open System.Text.Json
 open PcbObserver.Capture
 open PcbObserver.Queue
 open PcbObserver.Render
