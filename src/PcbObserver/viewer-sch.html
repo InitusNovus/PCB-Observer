@@ -61,7 +61,7 @@ function saveView(){try{localStorage.setItem(STORE_KEY,JSON.stringify(view))}cat
 const pageViews=new Map(JSON.parse(sessionStorage.getItem('pcbsch-pageviews')||'[]'));
 function savePageViews(){try{sessionStorage.setItem('pcbsch-pageviews',JSON.stringify([...pageViews]))}catch(e){}}
 
-let displayed=0,liveSeq=0,hold=false;
+let displayed=0,liveSeq=0,hold=false,historyMode=false;
 let pages=[];          // [{chain:[], file, status}]
 let currentChain=[];   // logical sheet being viewed
 let lastSource='—',lastCaptured=null,lastRender=null,lastError=null;
@@ -74,7 +74,8 @@ function noticeFor(sec){notice.textContent=sec;notice.style.display='block';setT
 function setBadge(text,cls){badge.textContent=text;badge.className=cls}
 function renderBadge(){
   if(!liveSeq){setBadge('connecting…','');return}
-  if(displayed!==liveSeq&&hold){setBadge(`HOLD · #${displayed} · latest #${liveSeq}`,'hold')}
+  if(displayed!==liveSeq&&historyMode){setBadge(`HISTORY · #${displayed} · latest #${liveSeq}`,'history')}
+  else if(displayed!==liveSeq&&hold){setBadge(`HOLD · #${displayed} · latest #${liveSeq}`,'hold')}
   else if(displayed!==liveSeq){setBadge(`HISTORY · #${displayed} · latest #${liveSeq}`,'history')}
   else if(lastError&&(!lastRender||lastError.sequence>lastRender.sequence)){
     setBadge(`Displaying #${displayed} · render failed · will update on next save`,'error')}
@@ -88,8 +89,7 @@ function renderBadge(){
 
 async function loadManifest(seq){
   const m=await fetch(`/renders/${seq}/manifest.json`).then(r=>r.ok?r.json():null);
-  pages=m?(m.pages||[]):[];
-  return m;
+  return m?(m.pages||[]):[];
 }
 function buildPageList(){
   pagesBox.textContent='';
@@ -110,6 +110,7 @@ function switchPage(chain){
   currentChain=chain;
   const restored=pageViews.get(chainKey(chain));
   view=restored?{...restored,...{}}:{...DEFAULT_VIEW};
+  applyView();
   showPage();
   buildPageList();
   renderBadge();
@@ -123,14 +124,19 @@ function showPage(){
 }
 // SCH-FR-012: updates never auto-jump; stay on the same logical sheet when it
 // still exists, else fall back to the root sheet.
+let manifestRequest=0;
 function showSeq(seq){
+  const request=++manifestRequest;
   displayed=seq;
-  loadManifest(seq).then(()=>{
+  loadManifest(seq).then(nextPages=>{
+    if(request!==manifestRequest)return;
+    pages=nextPages;
     const still=pages.some(p=>chainKey(p.chain)===chainKey(currentChain));
     if(!still){
       const root=pages.find(p=>p.chain.length===0);
       currentChain=root?root.chain:(pages[0]?pages[0].chain:[]);
       view={...DEFAULT_VIEW};
+      applyView();
     }
     showPage();buildPageList();renderBadge();
   });
@@ -139,7 +145,7 @@ function refreshFromState(){
   fetch('/api/state').then(r=>r.json()).then(s=>{
     lastSource=s.source_last_event;lastCaptured=s.latest_captured_snapshot;lastRender=s.latest_completed_render;lastError=s.last_error;
     if(s.latest_completed_render)liveSeq=s.latest_completed_render.sequence;
-    if(!hold&&liveSeq&&displayed!==liveSeq)showSeq(liveSeq);else renderBadge();
+    if(!hold&&!historyMode&&liveSeq&&displayed!==liveSeq)showSeq(liveSeq);else renderBadge();
   });
 }
 const es=new EventSource('/api/events');
@@ -156,9 +162,11 @@ document.querySelector('#hold').onclick=e=>{
 };
 function goLatest(){
   hold=false;
+  historyMode=false;
   const h=document.querySelector('#hold');h.textContent='HOLD';h.classList.remove('active');
   historyPanel.style.display='none';
   if(liveSeq)showSeq(liveSeq);
+  else manifestRequest++;
 }
 document.querySelector('#latest').onclick=goLatest;
 document.querySelector('#historyBtn').onclick=async()=>{
@@ -172,15 +180,27 @@ document.querySelector('#historyBtn').onclick=async()=>{
     meta.textContent=`${row.content_hash.slice(0,8)} · ${new Date(row.captured_at).toLocaleTimeString()}`;
     b.append(main);b.append(meta);
     if(row.sequence===displayed)b.classList.add('current');
-    b.onclick=()=>{historyPanel.style.display='none';showSeq(row.sequence)};
+    b.onclick=()=>{historyPanel.style.display='none';historyMode=true;showSeq(row.sequence)};
     historyPanel.append(b);
   }
   historyPanel.style.display='block';
 };
 
-viewport.addEventListener('wheel',e=>{e.preventDefault();view.zoom=Math.max(.2,Math.min(20,view.zoom*(e.deltaY<0?1.15:1/1.15)));applyView();saveView()},{passive:false});
+function isInteractiveTarget(target){
+  return target instanceof Element&&!!target.closest('#history,button,select,input,textarea,a,label,[role="button"]');
+}
+viewport.addEventListener('wheel',e=>{
+  if(isInteractiveTarget(e.target))return;
+  e.preventDefault();
+  view.zoom=Math.max(.2,Math.min(20,view.zoom*(e.deltaY<0?1.15:1/1.15)));
+  applyView();saveView()
+},{passive:false});
 let drag=null;
-viewport.addEventListener('pointerdown',e=>{drag=[e.clientX-view.x,e.clientY-view.y];viewport.setPointerCapture(e.pointerId)});
+viewport.addEventListener('pointerdown',e=>{
+  if(e.button!==0||isInteractiveTarget(e.target))return;
+  drag=[e.clientX-view.x,e.clientY-view.y];
+  viewport.setPointerCapture(e.pointerId)
+});
 viewport.addEventListener('pointermove',e=>{if(drag){view.x=e.clientX-drag[0];view.y=e.clientY-drag[1];applyView()}});
 viewport.addEventListener('pointerup',()=>{drag=null;saveView();savePageViews()});
 viewport.addEventListener('pointercancel',()=>drag=null);

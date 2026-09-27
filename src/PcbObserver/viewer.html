@@ -72,7 +72,7 @@ function saveView(){
   try{localStorage.setItem(STORE_KEY,JSON.stringify({zoom:view.zoom,x:view.x,y:view.y,back:view.back,cu:view.cu,ov:view.ov}))}catch(e){}
 }
 
-let displayed=0,liveSeq=0,hold=false;
+let displayed=0,liveSeq=0,hold=false,historyMode=false;
 let lastSource='—',lastCaptured=null,lastRender=null,lastError=null;
 
 // Board centered at the viewport origin (feedback: initial view off-center).
@@ -111,13 +111,17 @@ function applyLayerVisibility(){
 // together. The layer set comes from the bundle's self-describing manifest,
 // so --layers subset bundles never request files that do not exist (run-2
 // review: hardcoded 12-layer requests 404-looped on subset bundles).
-let manifestLayers=[];
+let manifestLayers=[],manifestRequest=0;
 async function showSeq(seq){
+  const request=++manifestRequest;
   displayed=seq;
+  let nextLayers=[];
   try{
     const m=await fetch(`/renders/${seq}/manifest.json`).then(r=>r.ok?r.json():null);
-    manifestLayers=m&&Array.isArray(m.layers)?m.layers:[];
-  }catch(e){manifestLayers=[]}
+    nextLayers=m&&Array.isArray(m.layers)?m.layers:[];
+  }catch(e){nextLayers=[]}
+  if(request!==manifestRequest)return;
+  manifestLayers=nextLayers;
   for(const name of LAYERS){
     const img=imgs[name];
     img.onerror=null;
@@ -139,7 +143,8 @@ function assetMissing(){
 function setBadge(text,cls){badge.textContent=text;badge.className=cls}
 function renderBadge(){
   if(!liveSeq){setBadge('connecting…','');return}
-  if(displayed!==liveSeq&&hold){setBadge(`HOLD · displaying #${displayed} · latest #${liveSeq}`,'hold')}
+  if(displayed!==liveSeq&&historyMode){setBadge(`HISTORY · displaying #${displayed} · latest #${liveSeq}`,'history')}
+  else if(displayed!==liveSeq&&hold){setBadge(`HOLD · displaying #${displayed} · latest #${liveSeq}`,'hold')}
   else if(displayed!==liveSeq){setBadge(`HISTORY · displaying #${displayed} · latest #${liveSeq}`,'history')}
   else if(lastError&&(!lastRender||lastError.sequence>lastRender.sequence)){
     setBadge(`Displaying #${displayed} · render failed · will update on next save`,'error')}
@@ -156,7 +161,7 @@ function refreshFromState(){
   fetch('/api/state').then(r=>r.json()).then(s=>{
     lastSource=s.source_last_event;lastCaptured=s.latest_captured_snapshot;lastRender=s.latest_completed_render;lastError=s.last_error;
     if(s.latest_completed_render)liveSeq=s.latest_completed_render.sequence;
-    if(!hold&&liveSeq&&displayed!==liveSeq)showSeq(liveSeq);else renderBadge();
+    if(!hold&&!historyMode&&liveSeq&&displayed!==liveSeq)showSeq(liveSeq);else renderBadge();
   });
 }
 // A9: subscribe FIRST, then fetch state — never miss a publish between the two.
@@ -174,9 +179,11 @@ document.querySelector('#hold').onclick=e=>{
 };
 function goLatest(){
   hold=false;
+  historyMode=false;
   const h=document.querySelector('#hold');h.textContent='HOLD';h.classList.remove('active');
   historyPanel.style.display='none';
   if(liveSeq)showSeq(liveSeq);
+  else manifestRequest++;
 }
 document.querySelector('#latest').onclick=goLatest;
 document.querySelector('#historyBtn').onclick=async()=>{
@@ -194,15 +201,27 @@ document.querySelector('#historyBtn').onclick=async()=>{
     meta.textContent=`${row.content_hash.slice(0,8)} · ${new Date(row.captured_at).toLocaleTimeString()}`;
     b.append(main);b.append(meta);
     if(row.sequence===displayed)b.classList.add('current');
-    b.onclick=()=>{historyPanel.style.display='none';showSeq(row.sequence)};
+    b.onclick=()=>{historyPanel.style.display='none';historyMode=true;showSeq(row.sequence)};
     historyPanel.append(b);
   }
   historyPanel.style.display='block';
 };
 
-viewport.addEventListener('wheel',e=>{e.preventDefault();view.zoom=Math.max(.2,Math.min(20,view.zoom*(e.deltaY<0?1.15:1/1.15)));applyView();saveView()},{passive:false});
+function isInteractiveTarget(target){
+  return target instanceof Element&&!!target.closest('#history,button,select,input,textarea,a,label,[role="button"]');
+}
+viewport.addEventListener('wheel',e=>{
+  if(isInteractiveTarget(e.target))return;
+  e.preventDefault();
+  view.zoom=Math.max(.2,Math.min(20,view.zoom*(e.deltaY<0?1.15:1/1.15)));
+  applyView();saveView()
+},{passive:false});
 let drag=null;
-viewport.addEventListener('pointerdown',e=>{drag=[e.clientX-view.x,e.clientY-view.y];viewport.setPointerCapture(e.pointerId)});
+viewport.addEventListener('pointerdown',e=>{
+  if(e.button!==0||isInteractiveTarget(e.target))return;
+  drag=[e.clientX-view.x,e.clientY-view.y];
+  viewport.setPointerCapture(e.pointerId)
+});
 viewport.addEventListener('pointermove',e=>{if(drag){view.x=e.clientX-drag[0];view.y=e.clientY-drag[1];applyView()}});
 viewport.addEventListener('pointerup',()=>{drag=null;saveView()});
 viewport.addEventListener('pointercancel',()=>drag=null);
