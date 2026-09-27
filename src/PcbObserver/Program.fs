@@ -260,6 +260,29 @@ let private runWatch (argv: string list) : int =
                 let state = LiveState()
                 let mutable lastPublished = 0
 
+                // Session hydration: a restart against a store with history
+                // must show the newest published bundle immediately instead
+                // of "connecting…" until the next save.
+                (match store.CompleteBundles() with
+                 | latest :: _ ->
+                     lastPublished <- latest
+
+                     let manifestPath = Path.Combine(store.BundlePath latest, "manifest.json")
+
+                     try
+                         use doc = JsonDocument.Parse(File.ReadAllText manifestPath)
+                         let root = doc.RootElement
+                         let mutable el = Unchecked.defaultof<JsonElement>
+                         let hash = if root.TryGetProperty("content_hash", &el) then el.GetString() else ""
+                         let created = if root.TryGetProperty("created_at", &el) then el.GetString() else ""
+
+                         state.RecordRendered latest hash (if isNull created || created = "" then DateTime.UtcNow.ToString("o") else created)
+                         state.SetLastEvent "resumed from latest published bundle"
+                         printfn $"Resumed: showing published bundle #{latest}"
+                     with _ ->
+                         ()
+                 | [] -> ())
+
                 // Rendered layer set for this run: --layers override or the
                 // full default set. The manifest self-describes it.
                 let layerSet =
@@ -462,6 +485,28 @@ let private runWatchSch (argv: string list) : int =
                 let rendererVersion = cliVersion cliPath
                 let state = LiveState()
                 let mutable lastPublished = 0
+
+                // Session hydration (same as watch): resume showing the newest
+                // published sch bundle on restart.
+                (match store.CompleteBundles() with
+                 | latest :: _ ->
+                     lastPublished <- latest
+
+                     let manifestPath = Path.Combine(store.BundlePath latest, "manifest.json")
+
+                     try
+                         use doc = JsonDocument.Parse(File.ReadAllText manifestPath)
+                         let root = doc.RootElement
+                         let mutable el = Unchecked.defaultof<JsonElement>
+                         let hash = if root.TryGetProperty("content_hash", &el) then el.GetString() else ""
+                         let created = if root.TryGetProperty("created_at", &el) then el.GetString() else ""
+
+                         state.RecordRendered latest hash (if isNull created || created = "" then DateTime.UtcNow.ToString("o") else created)
+                         state.SetLastEvent "resumed from latest published bundle"
+                         printfn $"Resumed: showing published sch bundle #{latest}"
+                     with _ ->
+                         ()
+                 | [] -> ())
 
                 // Dynamic dependency set (SCH-FR-005): refreshed after each
                 // capture; the watcher re-queries the name set per fire.
