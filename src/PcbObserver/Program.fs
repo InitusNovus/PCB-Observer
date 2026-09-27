@@ -10,6 +10,7 @@ open PcbObserver.Render
 open PcbObserver.Server
 open PcbObserver.Store
 open PcbObserver.Watch
+open PcbObserver.ObserverSession
 
 let private defaultObserverRoot () =
     Path.Combine(
@@ -103,65 +104,6 @@ let private runOneshot (argv: string list) : int =
 // ---------------------------------------------------------------------------
 // watch: live observer MVP (FR-001..018)
 // ---------------------------------------------------------------------------
-
-type private LiveState() =
-    let gate = obj ()
-    let changed = Event<unit>()
-
-    let mutable lastEvent = "starting"
-    let mutable latestCaptured: CapturedView option = None
-    let mutable latestRendered: CompletedView option = None
-    let mutable lastError: ErrorView option = None
-    let mutable failedSeqs: int list = []
-
-    member _.Gate = gate
-    member _.Changed = changed.Publish :> IObservable<unit>
-
-    member _.Trigger() = changed.Trigger()
-
-    member _.SetLastEvent value = lock gate (fun () -> lastEvent <- value)
-
-    member _.RecordCapture (snap: Snapshot) =
-        lock gate (fun () ->
-            latestCaptured <-
-                Some
-                    { sequence = snap.sequence
-                      content_hash = snap.sha256
-                      captured_at = snap.capturedAt.ToString("o")
-                      capture_status = snap.captureStatus }
-        )
-
-    member _.RecordRendered seq hash createdAt =
-        lock gate (fun () ->
-            latestRendered <-
-                Some { sequence = seq; content_hash = hash; created_at = createdAt; status = "complete" }
-
-            failedSeqs <- failedSeqs |> List.except [ seq ]
-
-            // A successful publish at or past the failed sequence supersedes
-            // the recorded failure (boundary review blocker: the §19 badge
-            // must not claim "render failed" forever after recovery).
-            lastError <-
-                match lastError with
-                | Some e when e.sequence >= seq -> lastError
-                | _ -> None
-        )
-
-    member _.RecordFailure seq reason =
-        lock gate (fun () ->
-            lastError <- Some { sequence = seq; reason = reason }
-            if seq > 0 then failedSeqs <- seq :: (failedSeqs |> List.except [ seq ])
-        )
-
-    member _.View () =
-        lock gate (fun () ->
-            { source_last_event = lastEvent
-              latest_captured_snapshot = latestCaptured
-              latest_completed_render = latestRendered
-              last_error = lastError }
-        )
-
-    member _.FailedSeqs = lock gate (fun () -> failedSeqs)
 
 
 let private cliVersion (cli: string) : string =
@@ -258,30 +200,8 @@ let private runWatch (argv: string list) : int =
 
                 let rendererVersion = cliVersion cliPath
                 let state = LiveState()
-                let mutable lastPublished = 0
-
-                // Session hydration: a restart against a store with history
-                // must show the newest published bundle immediately instead
-                // of "connecting…" until the next save.
-                (match store.CompleteBundles() with
-                 | latest :: _ ->
-                     lastPublished <- latest
-
-                     let manifestPath = Path.Combine(store.BundlePath latest, "manifest.json")
-
-                     try
-                         use doc = JsonDocument.Parse(File.ReadAllText manifestPath)
-                         let root = doc.RootElement
-                         let mutable el = Unchecked.defaultof<JsonElement>
-                         let hash = if root.TryGetProperty("content_hash", &el) then el.GetString() else ""
-                         let created = if root.TryGetProperty("created_at", &el) then el.GetString() else ""
-
-                         state.RecordRendered latest hash (if isNull created || created = "" then DateTime.UtcNow.ToString("o") else created)
-                         state.SetLastEvent "resumed from latest published bundle"
-                         printfn $"Resumed: showing published bundle #{latest}"
-                     with _ ->
-                         ()
-                 | [] -> ())
+                let session = ObserverSession(store, state)
+                session.Hydrate "bundle"
 
                 // Rendered layer set for this run: --layers override or the
                 // full default set. The manifest self-describes it.
@@ -299,40 +219,9 @@ let private runWatch (argv: string list) : int =
                     renderLayers runKiCad cliPath snap.path staging layerSet
                     store.WriteManifest(staging, snap, source, "kicad-cli", rendererVersion, layerSet)
 
-                let onComplete (snap: Snapshot) : unit =
-                    let published =
-                        lock
-                            state.Gate
-                            (fun () ->
-                                if snap.sequence > lastPublished && store.PublishBundle snap.sequence then
-                                    lastPublished <- snap.sequence
-                                    true
-                                else
-                                    false)
+                let onComplete (snap: Snapshot) : unit = session.Complete(snap, "bundle")
 
-                    if published then
-                        store.PruneHistory lastPublished
-                        store.LogStoreSize snap.sequence
-                        state.RecordRendered snap.sequence snap.sha256 (DateTime.UtcNow.ToString("o"))
-
-                        printfn
-                            $"LIVE · #{snap.sequence} · {snap.sha256.Substring(0, 12)} · bundle published"
-                    else
-                        printfn
-                            $"seq {snap.sequence} completed but not published (superseded or incomplete)"
-
-                    state.Trigger()
-
-                let onError (snap: Snapshot, ex: exn) : unit =
-                    let failedSeq =
-                        if obj.ReferenceEquals(snap, null) then 0 else snap.sequence
-
-                    lock state.Gate (fun () -> state.RecordFailure failedSeq ex.Message)
-
-                    printfn
-                        $"render failed (seq {failedSeq}): {ex.Message} · will update on next save"
-
-                    state.Trigger()
+                let onError (snap: Snapshot, ex: exn) : unit = session.Failed(snap, ex)
 
                 let queue = RenderQueue(runRender, onComplete, onError)
 
@@ -368,19 +257,7 @@ let private runWatch (argv: string list) : int =
                     { new IStateHolder with
                         override _.GetState() = state.View ()
 
-                        override _.GetSnapshotRows() =
-                            let complete = set (store.CompleteBundles ())
-                            let failed = set (state.FailedSeqs)
-
-                            [ for row in store.LoadSnapshots() ->
-                                  { sequence = row.sequence
-                                    captured_at = row.captured_at.ToString("o")
-                                    content_hash = row.content_hash
-                                    capture_status = row.capture_status
-                                    render_status =
-                                        (if complete.Contains row.sequence then "complete"
-                                         elif failed.Contains row.sequence then "failed"
-                                         else "skipped") } ]
+                        override _.GetSnapshotRows() = session.Rows ()
 
                         override _.Changed = state.Changed
 
@@ -393,12 +270,7 @@ let private runWatch (argv: string list) : int =
                 printfn $"Renderer: kicad-cli {rendererVersion} ({cliPath})"
                 printfn $"Viewer:   {server.BaseUrl}/   (Ctrl+C stops the observer only — FR-018)"
 
-                let waitForExit () =
-                    let exitGate = new Threading.ManualResetEventSlim(false)
-                    Console.CancelKeyPress.Add(fun e -> e.Cancel <- true; exitGate.Set())
-                    exitGate.Wait()
-
-                waitForExit ()
+                ObserverSession.waitForExit ()
 
                 printfn "Observer stopping; the agent, KiCad, and the source project are untouched."
                 server.Stop()
@@ -484,29 +356,8 @@ let private runWatchSch (argv: string list) : int =
 
                 let rendererVersion = cliVersion cliPath
                 let state = LiveState()
-                let mutable lastPublished = 0
-
-                // Session hydration (same as watch): resume showing the newest
-                // published sch bundle on restart.
-                (match store.CompleteBundles() with
-                 | latest :: _ ->
-                     lastPublished <- latest
-
-                     let manifestPath = Path.Combine(store.BundlePath latest, "manifest.json")
-
-                     try
-                         use doc = JsonDocument.Parse(File.ReadAllText manifestPath)
-                         let root = doc.RootElement
-                         let mutable el = Unchecked.defaultof<JsonElement>
-                         let hash = if root.TryGetProperty("content_hash", &el) then el.GetString() else ""
-                         let created = if root.TryGetProperty("created_at", &el) then el.GetString() else ""
-
-                         state.RecordRendered latest hash (if isNull created || created = "" then DateTime.UtcNow.ToString("o") else created)
-                         state.SetLastEvent "resumed from latest published bundle"
-                         printfn $"Resumed: showing published sch bundle #{latest}"
-                     with _ ->
-                         ()
-                 | [] -> ())
+                let session = ObserverSession(store, state)
+                session.Hydrate "sch bundle"
 
                 // Dynamic dependency set (SCH-FR-005): refreshed after each
                 // successful discovery so nested child directories are watched
@@ -547,38 +398,9 @@ let private runWatchSch (argv: string list) : int =
                     if not (SchPipeline.bundleIsPublishable rows) then
                         failwith "schematic bundle not publishable (pages not rendered and not missing)"
 
-                let onComplete (snap: Snapshot) : unit =
-                    let published =
-                        lock
-                            state.Gate
-                            (fun () ->
-                                if snap.sequence > lastPublished && store.PublishBundle snap.sequence then
-                                    lastPublished <- snap.sequence
-                                    true
-                                else
-                                    false)
+                let onComplete (snap: Snapshot) : unit = session.Complete(snap, "sch bundle")
 
-                    if published then
-                        store.PruneHistory lastPublished
-                        store.LogStoreSize snap.sequence
-                        state.RecordRendered snap.sequence snap.sha256 (DateTime.UtcNow.ToString("o"))
-
-                        printfn $"LIVE · #{snap.sequence} · {snap.sha256.Substring(0, 12)} · sch bundle published"
-                    else
-                        printfn $"seq {snap.sequence} completed but not published (superseded or incomplete)"
-
-                    state.Trigger()
-
-                let onError (snap: Snapshot, ex: exn) : unit =
-                    let failedSeq =
-                        if obj.ReferenceEquals(snap, null) then 0 else snap.sequence
-
-                    lock state.Gate (fun () -> state.RecordFailure failedSeq ex.Message)
-
-                    printfn
-                        $"render failed (seq {failedSeq}): {ex.Message} · will update on next save"
-
-                    state.Trigger()
+                let onError (snap: Snapshot, ex: exn) : unit = session.Failed(snap, ex)
 
                 let queue = RenderQueue(runRender, onComplete, onError)
 
@@ -643,19 +465,7 @@ let private runWatchSch (argv: string list) : int =
                     { new Server.IStateHolder with
                         override _.GetState() = state.View ()
 
-                        override _.GetSnapshotRows() =
-                            let complete = set (store.CompleteBundles ())
-                            let failed = set (state.FailedSeqs)
-
-                            [ for row in store.LoadSnapshots() ->
-                                  { sequence = row.sequence
-                                    captured_at = row.captured_at.ToString("o")
-                                    content_hash = row.content_hash
-                                    capture_status = row.capture_status
-                                    render_status =
-                                        (if complete.Contains row.sequence then "complete"
-                                         elif failed.Contains row.sequence then "failed"
-                                         else "skipped") } ]
+                        override _.GetSnapshotRows() = session.Rows ()
 
                         override _.Changed = state.Changed
 
@@ -672,12 +482,7 @@ let private runWatchSch (argv: string list) : int =
                 printfn $"Renderer:    kicad-cli {rendererVersion} ({cliPath})"
                 printfn $"Viewer:      {server.BaseUrl}/   (Ctrl+C stops the observer only — FR-018)"
 
-                let waitForExit () =
-                    let exitGate = new Threading.ManualResetEventSlim(false)
-                    Console.CancelKeyPress.Add(fun e -> e.Cancel <- true; exitGate.Set())
-                    exitGate.Wait()
-
-                waitForExit ()
+                ObserverSession.waitForExit ()
 
                 printfn "Observer stopping; the agent, KiCad, and the source project are untouched."
                 server.Stop()
