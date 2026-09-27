@@ -20,14 +20,26 @@ let layers =
        "B.Fab"
        "Cmts.User" |]
 
-/// Extract the root <svg viewBox="..."> attribute (§11.2 layer-composition
-/// check). None when absent or the head is malformed.
+/// Extract the first viewBox-bearing <svg> tag's viewBox (§11.2 layer
+/// composition check; kicad-cli writes it on the root tag). None when
+/// absent or unreadable.
 let viewBoxOf (svgPath: string) : string option =
     try
         use fs = File.OpenRead(svgPath)
         let buffer = Array.zeroCreate<byte> 4096
-        let read = fs.Read(buffer, 0, buffer.Length)
-        let head = System.Text.Encoding.UTF8.GetString(buffer, 0, read)
+        let mutable total = 0
+
+        // Read until the head buffer is full: a short Read or a multibyte
+        // char split at the boundary would otherwise lose the attribute.
+        while total < buffer.Length do
+            let read = fs.Read(buffer, total, buffer.Length - total)
+
+            if read <= 0 then
+                total <- buffer.Length
+            else
+                total <- total + read
+
+        let head = System.Text.Encoding.UTF8.GetString(buffer, 0, total)
         let m = System.Text.RegularExpressions.Regex.Match(head, "<svg[^>]*?viewBox=\"([^\"]+)\"")
 
         if m.Success then Some m.Groups[1].Value else None

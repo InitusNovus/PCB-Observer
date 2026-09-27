@@ -220,21 +220,16 @@ let private runWatch (argv: string list) : int =
 
                     // §11.2: record each layer's viewBox and flag consistency;
                     // kicad-cli emits a shared frame per board, so divergence
-                    // is an explicit-state anomaly, never a silent miscompose.
+                    // or a missing extraction is an explicit-state anomaly,
+                    // never a silent miscompose.
                     let viewBoxes =
                         [ for layer in layerSet do
-                              Path.Combine(staging, $"{layer}.svg"), Render.viewBoxOf (Path.Combine(staging, $"{layer}.svg")) ]
-
-                    let viewBoxPairs =
-                        [ for (svg, vb) in viewBoxes do
-                              match vb with
-                              | Some v -> (Path.GetFileNameWithoutExtension svg, v)
-                              | None -> () ]
+                              (layer, Render.viewBoxOf (Path.Combine(staging, $"{layer}.svg"))) ]
 
                     if Render.commonViewBox viewBoxes |> Option.isNone then
                         printfn $"viewBox mismatch across layers (seq {snap.sequence}) — overlay composition flagged in manifest"
 
-                    store.WriteManifestWithViewBoxes(staging, snap, source, "kicad-cli", rendererVersion, layerSet, viewBoxPairs)
+                    store.WriteManifestWithViewBoxes(staging, snap, source, "kicad-cli", rendererVersion, layerSet, viewBoxes)
 
                 let onComplete (snap: Snapshot) : unit = session.Complete(snap, "bundle")
 

@@ -64,7 +64,7 @@ let ``manifest records per-layer viewBoxes with a consistency flag`` () =
             "kicad-cli",
             "test",
             [| "F.Cu"; "B.Cu"; "Edge.Cuts" |],
-            [ ("F.Cu", "0 0 100 80"); ("B.Cu", "0 0 100 80"); ("Edge.Cuts", "0 0 100 80") ]
+            [ ("F.Cu", Some "0 0 100 80"); ("B.Cu", Some "0 0 100 80"); ("Edge.Cuts", Some "0 0 100 80") ]
         )
 
         let json = File.ReadAllText(Path.Combine(staging, "manifest.json"))
@@ -91,7 +91,7 @@ let ``manifest records per-layer viewBoxes with a consistency flag`` () =
             "kicad-cli",
             "test",
             [| "F.Cu"; "B.Cu" |],
-            [ ("F.Cu", "0 0 100 80"); ("B.Cu", "0 0 101 80") ]
+            [ ("F.Cu", Some "0 0 100 80"); ("B.Cu", Some "0 0 101 80") ]
         )
 
         let json2 = File.ReadAllText(Path.Combine(staging2, "manifest.json"))
@@ -117,5 +117,63 @@ let ``legacy manifest shape is unchanged without viewBoxes`` () =
 
         let json = File.ReadAllText(Path.Combine(staging, "manifest.json"))
         Assert.False(json.Contains "view_box")
+    finally
+        Directory.Delete(root, true)
+
+[<Fact>]
+let ``partial viewBox evidence never reports consistent`` () =
+    let root = tempDir ()
+
+    try
+        let store = Store(Path.Combine(root, "project"))
+        let staging = store.StagingFor 1
+        let svg = writeSvg staging "F.Cu.svg" "0 0 100 80"
+        writeSvg staging "B.Cu.svg" "0 0 100 80" |> ignore
+
+        // B.Cu extraction failed (None) — full-evidence rule must flag false.
+        let snap = { sequence = 1; sha256 = "hash0000000001"; path = svg; capturedAt = System.DateTime.UtcNow; captureStatus = "stable" }
+
+        store.WriteManifestWithViewBoxes(
+            staging,
+            snap,
+            "C:/src/board.kicad_pcb",
+            "kicad-cli",
+            "test",
+            [| "F.Cu"; "B.Cu" |],
+            [ ("F.Cu", Some "0 0 100 80"); ("B.Cu", None) ]
+        )
+
+        use doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(staging, "manifest.json")))
+        Assert.False(doc.RootElement.GetProperty("view_box_consistent").GetBoolean())
+
+        // The missing layer records a null view_box entry.
+        let entries = doc.RootElement.GetProperty("layer_view_boxes")
+        Assert.Equal(2, entries.GetArrayLength())
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, entries[1].GetProperty("view_box").ValueKind)
+    finally
+        Directory.Delete(root, true)
+
+[<Fact>]
+let ``legacy and viewBox-empty writers produce byte-identical manifests`` () =
+    let root = tempDir ()
+
+    try
+        let dirA = Path.Combine(root, "a")
+        let dirB = Path.Combine(root, "b")
+        Directory.CreateDirectory dirA |> ignore
+        Directory.CreateDirectory dirB |> ignore
+
+        let svg = writeSvg dirA "F.Cu.svg" "0 0 100 80"
+        File.Copy(svg, Path.Combine(dirB, "F.Cu.svg"))
+
+        let snap = { sequence = 1; sha256 = "hash0000000099"; path = svg; capturedAt = System.DateTime.UtcNow; captureStatus = "stable" }
+        let store = Store(Path.Combine(root, "project"))
+
+        store.WriteManifest(dirA, snap, "C:/src/b.kicad_pcb", "kicad-cli", "test", [| "F.Cu" |])
+        store.WriteManifestWithViewBoxes(dirB, snap, "C:/src/b.kicad_pcb", "kicad-cli", "test", [| "F.Cu" |], [])
+
+        let a = File.ReadAllText(Path.Combine(dirA, "manifest.json"))
+        let b = File.ReadAllText(Path.Combine(dirB, "manifest.json"))
+        Assert.Equal(a, b)
     finally
         Directory.Delete(root, true)

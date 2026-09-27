@@ -129,12 +129,12 @@ type Store(projectRoot: string) =
             rendererKind: string,
             rendererVersion: string,
             renderedLayers: string[],
-            layerViewBoxes: (string * string) list
+            layerViewBoxes: (string * string option) list
         ) : unit =
         let viewBoxes = Map.ofList layerViewBoxes
 
         let manifestJson =
-            if Map.isEmpty viewBoxes then
+            if List.isEmpty layerViewBoxes then
                 JsonSerializer.Serialize(
                     {| snapshot_sequence = snap.sequence
                        content_hash = snap.sha256
@@ -146,8 +146,19 @@ type Store(projectRoot: string) =
                     jsonOptions
                 )
             else
-                let distinct = layerViewBoxes |> List.map snd |> List.distinct
-                let consistent = distinct.Length = 1
+                // Full-evidence rule (run boundary review): consistent requires
+                // EVERY rendered layer to have a viewBox AND all to agree —
+                // partial extraction can never report true.
+                let present: string[] =
+                    renderedLayers
+                    |> Array.choose (fun l -> viewBoxes |> Map.tryFind l |> Option.bind id)
+
+                let distinct = present |> Array.distinct
+
+                let consistent =
+                    renderedLayers.Length = layerViewBoxes.Length
+                    && present.Length = renderedLayers.Length
+                    && distinct.Length = 1
 
                 JsonSerializer.Serialize(
                     {| snapshot_sequence = snap.sequence
@@ -156,7 +167,7 @@ type Store(projectRoot: string) =
                        renderer = {| kind = rendererKind; version = rendererVersion |}
                        created_at = snap.capturedAt.ToString("o")
                        layers = renderedLayers
-                       layer_view_boxes = [ for l in renderedLayers -> {| layer = l; view_box = Map.tryFind l viewBoxes |} ]
+                       layer_view_boxes = [ for l in renderedLayers -> {| layer = l; view_box = Map.tryFind l viewBoxes |> Option.flatten |} ]
                        view_box_consistent = consistent
                        status = "complete" |},
                     jsonOptions
