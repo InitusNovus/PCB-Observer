@@ -509,11 +509,12 @@ let private runWatchSch (argv: string list) : int =
                  | [] -> ())
 
                 // Dynamic dependency set (SCH-FR-005): refreshed after each
-                // capture; the watcher re-queries the name set per fire.
+                // successful discovery so nested child directories are watched
+                // by their full paths, including unresolved children.
                 // Tolerant startup discovery (run-2 review): a momentarily
                 // locked root must not crash watch-sch before the server
                 // starts; first capture re-discovers loudly either way.
-                let mutable discovered =
+                let discovered =
                     try
                         Sch.discover source
                     with _ ->
@@ -581,12 +582,23 @@ let private runWatchSch (argv: string list) : int =
 
                 let queue = RenderQueue(runRender, onComplete, onError)
 
+                let watcher =
+                    new Watch.DependencyWatcher(
+                        source,
+                        discovered.files,
+                        discovered.missing,
+                        debounceMs = defaultArg debounceOpt 500
+                    )
+
                 let captureNow () : unit =
                     let seq = lock state.Gate (fun () -> store.NextSequence())
 
                     try
                         let disc = Sch.discover source
-                        discovered <- disc
+                        // Do not replace the watch set until discovery succeeds.
+                        // A transient read failure therefore keeps the last
+                        // known dependency set alive for the next save.
+                        watcher.Refresh(disc.files, disc.missing)
 
                         let snap = SchPipeline.captureSch disc store.SnapshotsDir seq
 
@@ -615,20 +627,6 @@ let private runWatchSch (argv: string list) : int =
                         state.SetLastEvent $"capture unstable: {e.Message}"
                         printfn $"capture unstable: {e.Message}"
 
-                let watcher =
-                    let directory = Path.GetDirectoryName source
-
-                    let fileNames () =
-                        discovered.files
-                        |> List.map Path.GetFileName
-                        |> Seq.distinct
-
-                    new Watch.DirectoryWatcherSet(
-                        directory,
-                        fileNames,
-                        debounceMs = defaultArg debounceOpt 500
-                    )
-
                 let watcherSubscription =
                     watcher.Events.Subscribe(function
                     | Watch.SourcePresent ->
@@ -636,7 +634,7 @@ let private runWatchSch (argv: string list) : int =
                         captureNow ()
                     | Watch.WaitingForSource ->
                         state.SetLastEvent "waiting for source"
-                        printfn "Waiting for source (no watched file names present after debounce)")
+                        printfn "Waiting for source (root schematic absent after debounce)")
 
                 // D2 analog: initial capture through the queue when empty.
                 if store.CompleteBundles().IsEmpty then captureNow ()

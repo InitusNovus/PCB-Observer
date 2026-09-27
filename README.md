@@ -25,9 +25,10 @@ dotnet run --project src/PcbObserver -- watch-sch 'C:\path\to\root.kicad_sch' [-
 # whole-design export from the root on every stable save; logical sheets keyed
 # by sheet-name chain (shared children render per instance); missing children
 # flagged explicitly; sheet list + per-sheet viewport memory + HOLD/HISTORY.
-# MVP scope: children in SUBDIRECTORIES render but their edits are not
-# watched (single-directory watch) — keep the hierarchy flat or expect
-# root-file saves to pick up child changes.
+# Referenced children in subdirectories are watched automatically; changing
+# references updates directory subscriptions without restarting.
+# Missing nested files/directories are detected when created. External-tree
+# references and symbolic links are not validated capture layouts.
 ```
 
 Observer data lives under `%LOCALAPPDATA%\PCBObserver` (snapshots, atomic render bundles `renders/<seq>/`, metadata, size logs) — never inside the watched project. Render bundles publish by directory rename; history is capped (50, protecting the last-published + 10 most recent). The server binds 127.0.0.1 only. The viewer shows copper single-active (F.Cu/B.Cu radio) with non-copper overlays; multilayer composition/alignment (spec §11.2) stays a documented caveat. Back view is a horizontal mirror, not validated overlay geometry.
@@ -39,4 +40,8 @@ Observer data lives under `%LOCALAPPDATA%\PCBObserver` (snapshots, atomic render
 - **Next work**: `docs/ROADMAP.md` (deferred scope, ProjectAdapter refactor trigger, open questions, sequenced next milestones). **Browser-only verification**: `docs/Manual_Checklist.md`.
 - Specs: `docs/PCB_Observer_Spec_Draft_v0.1.md`, `docs/Schematic_Observer_MultiSheet_Addendum_v0.1.md`.
 
-No Git remote, commit, or GitHub repository has been created.
+Nested dependency watching verification: 39/39 tests passed; real KiCad
+child-only saves and dynamic directory retargeting published snapshots
+1 → 2 → 3 → 4 with three rendered pages. The child-only save left the root unchanged.
+
+Changes are committed locally. No Git remote is configured.
