@@ -131,36 +131,41 @@ let private runWatch (argv: string list) : int =
             (port: int option)
             (debounce: int option)
             (layersOpt: string option)
+            (quotaOpt: int option)
             =
         match xs with
-        | [] -> Ok(pcb, output, cli, port, debounce, layersOpt)
-        | "--output" :: v :: rest -> parse rest pcb (Some v) cli port debounce layersOpt
-        | "--cli" :: v :: rest -> parse rest pcb output (Some v) port debounce layersOpt
+        | [] -> Ok(pcb, output, cli, port, debounce, layersOpt, quotaOpt)
+        | "--output" :: v :: rest -> parse rest pcb (Some v) cli port debounce layersOpt quotaOpt
+        | "--cli" :: v :: rest -> parse rest pcb output (Some v) port debounce layersOpt quotaOpt
         | "--port" :: v :: rest ->
             match Int32.TryParse v with
-            | true, p -> parse rest pcb output cli (Some p) debounce layersOpt
+            | true, p -> parse rest pcb output cli (Some p) debounce layersOpt quotaOpt
             | _ -> Error $"Invalid --port: {v}"
         | "--debounce-ms" :: v :: rest ->
             match Int32.TryParse v with
-            | true, d when d > 0 -> parse rest pcb output cli port (Some d) layersOpt
+            | true, d when d > 0 -> parse rest pcb output cli port (Some d) layersOpt quotaOpt
             | _ -> Error $"Invalid --debounce-ms: {v}"
-        | "--layers" :: v :: rest -> parse rest pcb output cli port debounce (Some v)
+        | "--layers" :: v :: rest -> parse rest pcb output cli port debounce (Some v) quotaOpt
+        | "--history-quota-mb" :: v :: rest ->
+            match Int32.TryParse v with
+            | true, q when q > 0 -> parse rest pcb output cli port debounce layersOpt (Some q)
+            | _ -> Error $"Invalid --history-quota-mb: {v}"
         | flag :: _ when flag.StartsWith "-" -> Error $"Unknown option: {flag}"
         | path :: rest ->
             if pcb.IsSome then Error "Multiple PCB paths given"
-            else parse rest (Some path) output cli port debounce layersOpt
+            else parse rest (Some path) output cli port debounce layersOpt quotaOpt
 
-    let usage = "usage: PcbObserver watch <board.kicad_pcb> [--output DIR] [--cli PATH] [--port N] [--debounce-ms N] [--layers A,B,..]"
+    let usage = "usage: PcbObserver watch <board.kicad_pcb> [--output DIR] [--cli PATH] [--port N] [--debounce-ms N] [--layers A,B,..] [--history-quota-mb N]"
 
-    match parse argv None None None (Some 8765) (Some 500) None with
+    match parse argv None None None (Some 8765) (Some 500) None None with
     | Error message ->
         eprintfn "%s" message
         eprintfn "%s" usage
         2
-    | Ok(None, _, _, _, _, _) ->
+    | Ok(None, _, _, _, _, _, _) ->
         eprintfn "%s" usage
         2
-    | Ok(Some pcbPath, outputOpt, cliOpt, portOpt, debounceOpt, layersOpt) ->
+    | Ok(Some pcbPath, outputOpt, cliOpt, portOpt, debounceOpt, layersOpt, quotaOpt) ->
         let source = Path.GetFullPath pcbPath
 
         if String.Equals(Path.GetExtension source, ".kicad_pcb", StringComparison.OrdinalIgnoreCase)
@@ -200,7 +205,7 @@ let private runWatch (argv: string list) : int =
 
                 let rendererVersion = cliVersion cliPath
                 let state = LiveState()
-                let session = ObserverSession(store, state)
+                let session = ObserverSession(store, state, ?quotaBytes = (match quotaOpt with Some q -> Some (int64 q * 1024L * 1024L) | None -> None))
                 session.Hydrate "bundle"
 
                 // Rendered layer set for this run: --layers override or the
@@ -302,35 +307,40 @@ let private runWatchSch (argv: string list) : int =
             (cli: string option)
             (port: int option)
             (debounce: int option)
+            (quotaOpt: int option)
             =
         match xs with
-        | [] -> Ok(root, output, cli, port, debounce)
-        | "--output" :: v :: rest -> parse rest root (Some v) cli port debounce
-        | "--cli" :: v :: rest -> parse rest root output (Some v) port debounce
+        | [] -> Ok(root, output, cli, port, debounce, quotaOpt)
+        | "--output" :: v :: rest -> parse rest root (Some v) cli port debounce quotaOpt
+        | "--cli" :: v :: rest -> parse rest root output (Some v) port debounce quotaOpt
         | "--port" :: v :: rest ->
             match Int32.TryParse v with
-            | true, p -> parse rest root output cli (Some p) debounce
+            | true, p -> parse rest root output cli (Some p) debounce quotaOpt
             | _ -> Error $"Invalid --port: {v}"
         | "--debounce-ms" :: v :: rest ->
             match Int32.TryParse v with
-            | true, d when d > 0 -> parse rest root output cli port (Some d)
+            | true, d when d > 0 -> parse rest root output cli port (Some d) quotaOpt
             | _ -> Error $"Invalid --debounce-ms: {v}"
+        | "--history-quota-mb" :: v :: rest ->
+            match Int32.TryParse v with
+            | true, q when q > 0 -> parse rest root output cli port debounce (Some q)
+            | _ -> Error $"Invalid --history-quota-mb: {v}"
         | flag :: _ when flag.StartsWith "-" -> Error $"Unknown option: {flag}"
         | path :: rest ->
             if root.IsSome then Error "Multiple root paths given"
-            else parse rest (Some path) output cli port debounce
+            else parse rest (Some path) output cli port debounce quotaOpt
 
-    let usage = "usage: PcbObserver watch-sch <root.kicad_sch> [--output DIR] [--cli PATH] [--port N] [--debounce-ms N]"
+    let usage = "usage: PcbObserver watch-sch <root.kicad_sch> [--output DIR] [--cli PATH] [--port N] [--debounce-ms N] [--history-quota-mb N]"
 
-    match parse argv None None None (Some 8765) (Some 500) with
+    match parse argv None None None (Some 8765) (Some 500) None with
     | Error message ->
         eprintfn "%s" message
         eprintfn "%s" usage
         2
-    | Ok(None, _, _, _, _) ->
+    | Ok(None, _, _, _, _, _) ->
         eprintfn "%s" usage
         2
-    | Ok(Some rootPath, outputOpt, cliOpt, portOpt, debounceOpt) ->
+    | Ok(Some rootPath, outputOpt, cliOpt, portOpt, debounceOpt, quotaOpt) ->
         let source = Path.GetFullPath rootPath
 
         if String.Equals(Path.GetExtension source, ".kicad_sch", StringComparison.OrdinalIgnoreCase)
@@ -368,7 +378,7 @@ let private runWatchSch (argv: string list) : int =
 
                 let rendererVersion = cliVersion cliPath
                 let state = LiveState()
-                let session = ObserverSession(store, state)
+                let session = ObserverSession(store, state, ?quotaBytes = (match quotaOpt with Some q -> Some (int64 q * 1024L * 1024L) | None -> None))
                 session.Hydrate "sch bundle"
 
                 // Dynamic dependency set (SCH-FR-005): refreshed after each

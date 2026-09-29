@@ -1,6 +1,7 @@
 module PcbObserver.Store
 
 open System
+open System.Collections.Generic
 open System.IO
 open System.Text.Json
 open PcbObserver.Capture
@@ -275,6 +276,96 @@ type Store(projectRoot: string) =
                         Directory.Delete(this.BundlePath seq, true)
                     with _ ->
                         ()
+
+    /// §27 storage quota: after the count-based prune, drop the oldest
+    /// unprotected bundles (and their now-unreferenced snapshots) until the
+    /// store (snapshots + renders) fits `quotaBytes`. Protections match the
+    /// count prune: the last published bundle and the most recent complete
+    /// ones always survive — a quota smaller than the protected set keeps
+    /// them anyway and only logs. Snapshots are content-addressed and shared;
+    /// a snapshot survives while any remaining bundle still references it
+    /// (via its manifest's source_path) or another snapshot dir user exists.
+    /// Returns the pruned sequence numbers.
+    member this.PruneToQuota(lastPublished: int, quotaBytes: int64, ?protectRecent: int) : int list =
+        // Narrower than the count prune: the byte quota must be able to bite
+        // before 11 bundles accumulate, so only the displayed bundle and the
+        // two most recent complete ones are protected by default.
+        let protectRecent = defaultArg protectRecent 2
+        let complete = this.CompleteBundles()
+
+        if List.isEmpty complete then
+            []
+        else
+            let protectedSet = set (lastPublished :: List.truncate protectRecent complete)
+            let dirSize (dir: string) =
+                Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories)
+                |> Seq.sumBy (fun f -> try FileInfo(f).Length with _ -> 0L)
+
+            let totalSize () =
+                let s = try dirSize snapshotsDir with _ -> 0L
+                let r = try dirSize rendersDir with _ -> 0L
+                s + r
+
+            // Content-addressed snapshot GC: a snapshot entry (PCB file or
+            // schematic directory named by its content hash) survives while
+            // any remaining complete bundle's manifest still carries that
+            // content_hash. Staging leftovers (.tmp-) always go.
+            let collectOrphanSnapshots () =
+                let liveHashes = HashSet<string>(StringComparer.OrdinalIgnoreCase)
+
+                for seq in this.CompleteBundles() do
+                    try
+                        use doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(this.BundlePath seq, "manifest.json")))
+                        let mutable el = Unchecked.defaultof<JsonElement>
+
+                        if doc.RootElement.TryGetProperty("content_hash", &el) then
+                            let h = el.GetString()
+
+                            if not (isNull h) then liveHashes.Add h |> ignore
+                    with _ ->
+                        ()
+
+                for entry in Directory.EnumerateFileSystemEntries snapshotsDir do
+                    let name = Path.GetFileName entry
+                    let isLive = liveHashes |> Seq.exists (fun h -> name.StartsWith(h, StringComparison.Ordinal))
+
+                    if name.StartsWith(".tmp-", StringComparison.Ordinal) || not isLive then
+                        try
+                            if Directory.Exists entry then Directory.Delete(entry, true) else File.Delete entry
+                        with _ ->
+                            ()
+
+            let mutable pruned = []
+            let mutable continuePruning = true
+
+            while continuePruning && totalSize () > quotaBytes do
+                let candidate =
+                    complete
+                    |> List.except protectedSet
+                    |> List.filter (fun s -> not (List.contains s pruned))
+                    |> List.sort
+                    |> List.tryHead
+
+                match candidate with
+                | Some seq ->
+                    try
+                        Directory.Delete(this.BundlePath seq, true)
+                    with _ ->
+                        ()
+
+                    pruned <- seq :: pruned
+
+                    // Reclaim the orphaned snapshot immediately so the next
+                    // size check reflects reality.
+                    collectOrphanSnapshots ()
+                | None ->
+                    // Nothing prunable left: protected set alone exceeds quota.
+                    continuePruning <- false
+
+            // Final sweep (also on the already-fits path) clears leftovers.
+            collectOrphanSnapshots ()
+
+            List.rev pruned
 
     /// C6: one-line store size log per publish — feeds §40 disk-cost data.
     member this.LogStoreSize(sequence: int) : unit =

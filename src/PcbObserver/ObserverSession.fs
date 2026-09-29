@@ -72,7 +72,9 @@ type LiveState() =
 /// last-published bookkeeping, failure recording, and history-row
 /// projection. Domain differences (layer set vs page manifest) stay in the
 /// callers; `bundleLabel` only names the console output.
-type ObserverSession(store: Store, state: LiveState) =
+type ObserverSession(store: Store, state: LiveState, ?quotaBytes: int64) =
+    // Callers pass bytes; the default is 512 MiB.
+    let quotaBytes = defaultArg quotaBytes (512L * 1024L * 1024L)
     let mutable lastPublished = 0
 
     /// Restart against a store with history must show the newest published
@@ -115,6 +117,14 @@ type ObserverSession(store: Store, state: LiveState) =
 
         if published then
             store.PruneHistory lastPublished
+
+            let pruned = store.PruneToQuota(lastPublished, quotaBytes)
+
+            if not (List.isEmpty pruned) then
+                let quotaMb = quotaBytes / (1024L * 1024L)
+                let list = String.Join(", ", pruned)
+                printfn $"history quota {quotaMb}MB: pruned bundles {list}"
+
             store.LogStoreSize snap.sequence
             state.RecordRendered snap.sequence snap.sha256 (DateTime.UtcNow.ToString("o"))
 
