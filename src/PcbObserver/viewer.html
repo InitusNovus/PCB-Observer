@@ -27,6 +27,12 @@
   #history button.current{background:#4b6b8f;border-color:#7fa3d1}
   #history .meta{color:#8fa2b5;font-size:12px;margin-left:6px}
   #notice{position:absolute;left:50%;top:12px;transform:translateX(-50%);background:#5a2d2d;border-radius:6px;padding:6px 12px;display:none;z-index:6}
+  #searchBox{position:relative}
+  #searchBox input{background:#151a20;color:inherit;border:1px solid #62758a;border-radius:5px;padding:5px 9px;width:120px}
+  #searchResults{position:absolute;top:110%;left:0;background:#222b36ee;border:1px solid #62758a;border-radius:6px;padding:6px;max-height:60vh;overflow:auto;display:none;z-index:7;min-width:180px}
+  #searchResults button{display:block;width:100%;margin:2px 0;text-align:left}
+  #searchResults .meta{color:#8fa2b5;font-size:12px;margin-left:6px}
+  #searchRing{position:absolute;left:50%;top:50%;width:80px;height:80px;border:3px solid #7fa3d1;border-radius:50%;transform:translate(-50%,-50%);display:none;pointer-events:none;z-index:4;opacity:.9;transition:opacity .8s}
 </style>
 <header>
   <strong>KiCad Observer</strong>
@@ -35,11 +41,12 @@
   <button id="latest" title="Return to newest completed render">Latest</button>
   <button id="historyBtn">HISTORY</button>
   <span id="layers"></span>
+  <span id="searchBox"><input id="search" type="text" placeholder="RefDes (U103)" autocomplete="off" spellcheck="false"><div id="searchResults"></div></span>
   <button id="side">Back</button>
   <button id="fit">Reset view</button>
 </header>
 <div id="viewport">
-  <div id="stack"></div>
+  <div id="stack"><div id="searchRing"></div></div>
   <div id="history"></div>
   <div id="notice"></div>
 </div>
@@ -134,8 +141,89 @@ async function showSeq(seq){
   for(const name of wanted){
     imgs[name].onerror=()=>assetMissing(name);
   }
+  buildRefdesIndex(seq);
   renderBadge();
 }
+
+// §23 RefDes search: index <text> nodes (reference + x/y) from the
+// displayed bundle's silk SVG; kicad-cli keeps invisible text anchors
+// (measured: C104 x="46.2190" y="6.0360" in F.Silkscreen.svg).
+const refdesIndex=new Map(); // seq -> {items:[{ref,fx,fy}], reason?:string}
+async function buildRefdesIndex(seq){
+  if(refdesIndex.has(seq))return;
+  refdesIndex.set(seq,{items:[]});
+  const layers=['F.Silkscreen','B.Silkscreen','F.Fab','B.Fab'].filter(n=>manifestLayers.includes(n));
+  for(const layer of layers){
+    try{
+      const text=await fetch(`/renders/${seq}/${encodeURIComponent(layer)}.svg`).then(r=>r.ok?r.text():null);
+      if(!text)continue;
+      const doc=new DOMParser().parseFromString(text,'image/svg+xml');
+      const svg=doc.documentElement;
+      const vb=(svg.getAttribute('viewBox')||'0 0 1 1').split(/[\s,]+/).map(Number);
+      const vbW=vb[2]||1,vbH=vb[3]||1;
+      const items=[...svg.querySelectorAll('text')]
+        .map(t=>({ref:(t.textContent||'').trim(),x:parseFloat(t.getAttribute('x')),y:parseFloat(t.getAttribute('y'))}))
+        .filter(it=>/^[A-Za-z]{1,4}[0-9]+/.test(it.ref)&&isFinite(it.x)&&isFinite(it.y))
+        .map(it=>({ref:it.ref,fx:it.x/vbW,fy:it.y/vbH}));
+      if(items.length){
+        refdesIndex.set(seq,{items});
+        if(document.activeElement===searchInput)renderSearch();
+        return;
+      }
+    }catch(e){}
+  }
+  refdesIndex.set(seq,{items:[],reason:'검색 불가(색인 없음 — 텍스트 앵커가 없는 번들)'});
+  if(document.activeElement===searchInput)renderSearch();
+}
+
+const searchInput=document.querySelector('#search');
+const searchResults=document.querySelector('#searchResults');
+const searchRing=document.querySelector('#searchRing');
+let ringTimer=null;
+function showRing(fx,fy){
+  searchRing.style.left=(fx*100)+'%';
+  searchRing.style.top=(fy*100)+'%';
+  searchRing.style.display='block';
+  searchRing.style.opacity='.9';
+  if(ringTimer)clearTimeout(ringTimer);
+  ringTimer=setTimeout(()=>{searchRing.style.opacity='0'},1200);
+}
+function gotoRefdes(item){
+  // SVG coords -> stack-local fraction -> pan so the part lands centered.
+  // offsetWidth/Height are the untransformed layout size the transform
+  // scales from, so the math stays exact at any zoom.
+  const stack=document.querySelector('#stack');
+  const z=view.zoom||1;
+  const px=(item.fx-0.5)*stack.offsetWidth, py=(item.fy-0.5)*stack.offsetHeight;
+  view.x=-z*px; view.y=-z*py;
+  applyView();saveView();
+  showRing(item.fx,item.fy);
+}
+function renderSearch(){
+  const idx=refdesIndex.get(displayed);
+  searchResults.textContent='';
+  const note=t=>{const d=document.createElement('div');d.className='meta';d.textContent=t;searchResults.append(d);searchResults.style.display='block'};
+  if(!idx){note('색인 구축 중…');return}
+  const q=searchInput.value.trim().toLowerCase();
+  if(!q){searchResults.style.display='none';return}
+  if(idx.reason){note(idx.reason);return}
+  const matches=idx.items.filter(it=>it.ref.toLowerCase().startsWith(q)).slice(0,50);
+  if(!matches.length){note('매칭 없음');return}
+  for(const m of matches){
+    const b=document.createElement('button');
+    const main=document.createElement('span');main.textContent=m.ref;
+    const meta=document.createElement('span');meta.className='meta';
+    meta.textContent=`${(m.fx*100).toFixed(0)},${(m.fy*100).toFixed(0)}%`;
+    b.append(main,meta);
+    b.onclick=()=>{searchResults.style.display='none';gotoRefdes(m)};
+    searchResults.append(b);
+  }
+  searchResults.style.display='block';
+}
+searchInput.addEventListener('input',renderSearch);
+searchInput.addEventListener('focus',renderSearch);
+searchInput.addEventListener('keydown',e=>{if(e.key==='Escape'){searchInput.value='';searchResults.style.display='none';searchInput.blur()}});
+document.addEventListener('pointerdown',e=>{if(!e.target.closest('#searchBox'))searchResults.style.display='none'},true);
 function assetMissing(){
   noticeFor('번들이 정리되었습니다 — 최신으로 이동합니다');
   if(displayed===liveSeq)goLatest();

@@ -13,6 +13,8 @@ dotnet test PCB-Observer.slnx
 # Live observer (watch mode):
 dotnet run --project src/PcbObserver -- watch 'C:\path\to\board.kicad_pcb' [--port 8765] [--cli PATH] [--debounce-ms 500] [--layers A,B,..] [--history-quota-mb N] [--output DIR]
 # → opens a loopback URL; every save of the board updates the viewer (LIVE).
+# → RefDes search box (§23): type a reference prefix (e.g. C), pick a match,
+#   the viewport centers on that part with a highlight ring.
 
 # Legacy one-shot Phase 0 probe (kept):
 dotnet run --project src/PcbObserver -- 'C:\Program Files\KiCad\10.0\share\kicad\demos\complex_hierarchy\complex_hierarchy.kicad_pcb'
