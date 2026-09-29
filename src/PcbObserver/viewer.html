@@ -217,13 +217,16 @@ function gotoRefdes(item){
   const px=(fx-0.5)*img.offsetWidth, py=item.fy*img.offsetHeight;
   view.x=-z*px; view.y=-z*py;
   applyView();saveView();
-  showRing(img,fx,item.fy);
+  // The ring lives INSIDE the mirrored stack, so it anchors in element
+  // space (raw fx) — the scale(-z,z) flip lands it on the part visually.
+  // Only the pan uses the mirrored fraction.
+  showRing(img,item.fx,item.fy);
 }
 function renderSearch(){
   const idx=refdesIndex.get(displayed);
   searchResults.textContent='';
   const note=t=>{const d=document.createElement('div');d.className='meta';d.textContent=t;searchResults.append(d);searchResults.style.display='block'};
-  if(!idx||idx.building){note('색인 구축 중…');if(!idx)buildRefdesIndex(displayed);return}
+  if(!idx||idx.building){note('색인 구축 중…');if(!idx||idx.failed)buildRefdesIndex(displayed);return}
   const q=searchInput.value.trim().toLowerCase();
   if(!q){searchResults.style.display='none';return}
   if(idx.reason){note(idx.reason);return}
