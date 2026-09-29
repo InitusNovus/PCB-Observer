@@ -282,9 +282,9 @@ type Store(projectRoot: string) =
     /// store (snapshots + renders) fits `quotaBytes`. Protections match the
     /// count prune: the last published bundle and the most recent complete
     /// ones always survive — a quota smaller than the protected set keeps
-    /// them anyway and only logs. Snapshots are content-addressed and shared;
-    /// a snapshot survives while any remaining bundle still references it
-    /// (via its manifest's source_path) or another snapshot dir user exists.
+    /// them anyway and warns. Snapshots are content-addressed and shared;
+    /// a snapshot survives while any remaining bundle references it via
+    /// the manifest's content_hash (see the GC block below).
     /// Returns the pruned sequence numbers.
     member this.PruneToQuota(lastPublished: int, quotaBytes: int64, ?protectRecent: int) : int list =
         // Narrower than the count prune: the byte quota must be able to bite
@@ -309,11 +309,17 @@ type Store(projectRoot: string) =
             // Content-addressed snapshot GC: a snapshot entry (PCB file or
             // schematic directory named by its content hash) survives while
             // any remaining complete bundle's manifest still carries that
-            // content_hash. Staging leftovers (.tmp-) always go.
+            // content_hash. In-flight protection (boundary review): metadata
+            // rows at or above the oldest surviving complete bundle keep
+            // their entries alive — AppendSnapshot runs at capture time, so
+            // a captured-but-unrendered snapshot always has a row. Fresh
+            // .tmp- staging (in-flight copy) gets a 15-minute grace window.
             let collectOrphanSnapshots () =
                 let liveHashes = HashSet<string>(StringComparer.OrdinalIgnoreCase)
 
-                for seq in this.CompleteBundles() do
+                let surviving = this.CompleteBundles()
+
+                for seq in surviving do
                     try
                         use doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(this.BundlePath seq, "manifest.json")))
                         let mutable el = Unchecked.defaultof<JsonElement>
@@ -325,35 +331,57 @@ type Store(projectRoot: string) =
                     with _ ->
                         ()
 
+                let minSurviving =
+                    match surviving with
+                    | [] -> Int32.MaxValue
+                    | xs -> List.min xs
+
+                for row in this.LoadSnapshots() do
+                    if row.sequence >= minSurviving then
+                        for f in row.files do
+                            let name = Path.GetFileNameWithoutExtension f
+
+                            if not (String.IsNullOrEmpty name) then liveHashes.Add name |> ignore
+
+                let graceCutoff = DateTime.UtcNow.AddMinutes(-15.0)
+
                 for entry in Directory.EnumerateFileSystemEntries snapshotsDir do
                     let name = Path.GetFileName entry
+
                     let isLive = liveHashes |> Seq.exists (fun h -> name.StartsWith(h, StringComparison.Ordinal))
 
-                    if name.StartsWith(".tmp-", StringComparison.Ordinal) || not isLive then
+                    let isFreshTemp =
+                        name.StartsWith(".tmp-", StringComparison.Ordinal)
+                        && (try Directory.GetLastWriteTimeUtc entry > graceCutoff with _ -> false)
+
+                    if not isLive && not isFreshTemp then
                         try
                             if Directory.Exists entry then Directory.Delete(entry, true) else File.Delete entry
                         with _ ->
                             ()
 
             let mutable pruned = []
+            let mutable attempted = []
             let mutable continuePruning = true
 
             while continuePruning && totalSize () > quotaBytes do
                 let candidate =
                     complete
                     |> List.except protectedSet
-                    |> List.filter (fun s -> not (List.contains s pruned))
+                    |> List.filter (fun s -> not (List.contains s attempted))
                     |> List.sort
                     |> List.tryHead
 
                 match candidate with
                 | Some seq ->
+                    attempted <- seq :: attempted
                     try
                         Directory.Delete(this.BundlePath seq, true)
                     with _ ->
                         ()
 
-                    pruned <- seq :: pruned
+                    // Report only sequences actually gone from disk.
+                    if not (Directory.Exists(this.BundlePath seq)) then pruned <- seq :: pruned
 
                     // Reclaim the orphaned snapshot immediately so the next
                     // size check reflects reality.
@@ -366,6 +394,18 @@ type Store(projectRoot: string) =
             collectOrphanSnapshots ()
 
             List.rev pruned
+
+    /// §27 observability: current snapshots+renders size in bytes (quota
+    /// floor reporting).
+    member this.TotalStoreBytes() : int64 =
+        let size dir =
+            try
+                Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories)
+                |> Seq.sumBy (fun f -> try FileInfo(f).Length with _ -> 0L)
+            with _ ->
+                0L
+
+        size snapshotsDir + size rendersDir
 
     /// C6: one-line store size log per publish — feeds §40 disk-cost data.
     member this.LogStoreSize(sequence: int) : unit =

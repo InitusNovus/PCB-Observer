@@ -287,9 +287,66 @@ let ``quota prune removes staging leftovers during snapshot gc`` () =
         let tmp = Path.Combine(store.SnapshotsDir, ".tmp-orphan")
         Directory.CreateDirectory tmp |> ignore
         File.WriteAllText(Path.Combine(tmp, "x"), "y")
+        // Stale beyond the in-flight grace window (fresh staging is kept).
+        Directory.SetLastWriteTimeUtc(tmp, DateTime.UtcNow.AddHours(-1.0))
 
         store.PruneToQuota(2, 10_000_000L) |> ignore
 
         Assert.False(Directory.Exists tmp)
+    finally
+        Directory.Delete(root, true)
+
+[<Fact>]
+let ``quota gc keeps snapshots of captured-but-unrendered sequences`` () =
+    let root = tempDir ()
+
+    try
+        let store = Store(Path.Combine(root, "project"))
+        // Two published bundles (hash-1, hash-2) plus a pending capture for
+        // seq 3 whose snapshot exists but has no bundle/manifest yet.
+        publishQuotaFixtures store 2 (1024 * 1024)
+
+        store.AppendSnapshot(
+            { sequence = 3
+              sha256 = "hash-3"
+              path = Path.Combine(store.SnapshotsDir, "hash-3.kicad_pcb")
+              capturedAt = DateTime.UtcNow
+              captureStatus = "stable" },
+            "C:/src/b.kicad_pcb"
+        )
+
+        File.WriteAllBytes(Path.Combine(store.SnapshotsDir, "hash-3.kicad_pcb"), Array.zeroCreate<byte> (1024 * 1024))
+
+        // Aggressive quota prunes bundle 1 but must NOT touch hash-3.
+        let pruned = store.PruneToQuota(2, 1_500_000L, protectRecent = 1)
+
+        Assert.Equal<int list>([ 1 ], pruned)
+        Assert.True(File.Exists(Path.Combine(store.SnapshotsDir, "hash-3.kicad_pcb")), "pending snapshot must survive")
+        Assert.False(File.Exists(Path.Combine(store.SnapshotsDir, "hash-1.kicad_pcb")), "orphan of pruned bundle 1 reclaimed")
+        Assert.True(File.Exists(Path.Combine(store.SnapshotsDir, "hash-2.kicad_pcb")))
+    finally
+        Directory.Delete(root, true)
+
+[<Fact>]
+let ``quota gc gives fresh tmp staging a grace window`` () =
+    let root = tempDir ()
+
+    try
+        let store = Store(Path.Combine(root, "project"))
+        publishQuotaFixtures store 1 (1024 * 1024)
+
+        // In-flight capture staging: fresh .tmp- directory.
+        let tmp = Path.Combine(store.SnapshotsDir, ".tmp-hashX-abc")
+        Directory.CreateDirectory tmp |> ignore
+        File.WriteAllText(Path.Combine(tmp, "mid-copy"), "partial")
+
+        store.PruneToQuota(1, 10_000_000L) |> ignore
+
+        Assert.True(Directory.Exists tmp, "fresh staging must survive the sweep")
+
+        // A stale .tmp- (older than the grace window) is removed.
+        Directory.SetLastWriteTimeUtc(tmp, DateTime.UtcNow.AddHours(-1.0))
+        store.PruneToQuota(1, 10_000_000L) |> ignore
+        Assert.False(Directory.Exists tmp, "stale staging must be reclaimed")
     finally
         Directory.Delete(root, true)

@@ -122,6 +122,9 @@ let manifestLayers=[],manifestRequest=0;
 async function showSeq(seq){
   const request=++manifestRequest;
   displayed=seq;
+  // A stale search dropdown must not offer coordinates from the previous
+  // bundle; re-render immediately (new seq shows the building state).
+  if(document.querySelector('#search')===document.activeElement&&typeof renderSearch==='function')renderSearch();
   let nextLayers=[];
   try{
     const m=await fetch(`/renders/${seq}/manifest.json`).then(r=>r.ok?r.json():null);
@@ -146,33 +149,43 @@ async function showSeq(seq){
 }
 
 // §23 RefDes search: index <text> nodes (reference + x/y) from the
-// displayed bundle's silk SVG; kicad-cli keeps invisible text anchors
-// (measured: C104 x="46.2190" y="6.0360" in F.Silkscreen.svg).
-const refdesIndex=new Map(); // seq -> {items:[{ref,fx,fy}], reason?:string}
+// displayed bundle's silk/fab SVGs — kicad-cli keeps invisible text
+// anchors (measured: C104 x="46.2190" y="6.0360" in F.Silkscreen.svg).
+// Both sides merge into one index; each item carries its layer so the
+// pan math can use that layer <img>'s real layout box.
+const refdesIndex=new Map(); // seq -> {building?:bool, items:[{ref,fx,fy,layer}], reason?:string}
 async function buildRefdesIndex(seq){
-  if(refdesIndex.has(seq))return;
-  refdesIndex.set(seq,{items:[]});
+  if(refdesIndex.has(seq)&&!refdesIndex.get(seq).failed)return;
+  refdesIndex.set(seq,{items:[],building:true});
   const layers=['F.Silkscreen','B.Silkscreen','F.Fab','B.Fab'].filter(n=>manifestLayers.includes(n));
+  const items=[];
+  let fetchedAny=false;
   for(const layer of layers){
     try{
       const text=await fetch(`/renders/${seq}/${encodeURIComponent(layer)}.svg`).then(r=>r.ok?r.text():null);
       if(!text)continue;
+      fetchedAny=true;
       const doc=new DOMParser().parseFromString(text,'image/svg+xml');
       const svg=doc.documentElement;
       const vb=(svg.getAttribute('viewBox')||'0 0 1 1').split(/[\s,]+/).map(Number);
-      const vbW=vb[2]||1,vbH=vb[3]||1;
-      const items=[...svg.querySelectorAll('text')]
-        .map(t=>({ref:(t.textContent||'').trim(),x:parseFloat(t.getAttribute('x')),y:parseFloat(t.getAttribute('y'))}))
-        .filter(it=>/^[A-Za-z]{1,4}[0-9]+/.test(it.ref)&&isFinite(it.x)&&isFinite(it.y))
-        .map(it=>({ref:it.ref,fx:it.x/vbW,fy:it.y/vbH}));
-      if(items.length){
-        refdesIndex.set(seq,{items});
-        if(document.activeElement===searchInput)renderSearch();
-        return;
+      const vbX=vb[0]||0,vbY=vb[1]||0,vbW=vb[2]||1,vbH=vb[3]||1;
+      for(const t of svg.querySelectorAll('text')){
+        const ref=(t.textContent||'').trim();
+        const x=parseFloat(t.getAttribute('x')),y=parseFloat(t.getAttribute('y'));
+        if(/^[A-Za-z]{1,4}[0-9]+/.test(ref)&&isFinite(x)&&isFinite(y)&&!items.some(i=>i.ref===ref&&i.layer===layer)){
+          items.push({ref,fx:(x-vbX)/vbW,fy:(y-vbY)/vbH,layer});
+        }
       }
     }catch(e){}
   }
-  refdesIndex.set(seq,{items:[],reason:'검색 불가(색인 없음 — 텍스트 앵커가 없는 번들)'});
+  if(items.length){
+    refdesIndex.set(seq,{items});
+  }else if(fetchedAny){
+    refdesIndex.set(seq,{items:[],reason:'검색 불가(색인 없음 — 텍스트 앵커가 없는 번들)'});
+  }else{
+    // Fetch failure (transient): do not cache — next focus retries.
+    refdesIndex.set(seq,{items:[],building:true,failed:true});
+  }
   if(document.activeElement===searchInput)renderSearch();
 }
 
@@ -180,30 +193,37 @@ const searchInput=document.querySelector('#search');
 const searchResults=document.querySelector('#searchResults');
 const searchRing=document.querySelector('#searchRing');
 let ringTimer=null;
-function showRing(fx,fy){
-  searchRing.style.left=(fx*100)+'%';
-  searchRing.style.top=(fy*100)+'%';
+function showRing(img,fx,fy){
+  // Anchor to the layer <img>'s layout box (the #stack container itself is
+  // 0-height: all children are absolutely positioned).
+  searchRing.style.left=(fx*img.offsetWidth)+'px';
+  searchRing.style.top=(fy*img.offsetHeight)+'px';
   searchRing.style.display='block';
   searchRing.style.opacity='.9';
   if(ringTimer)clearTimeout(ringTimer);
   ringTimer=setTimeout(()=>{searchRing.style.opacity='0'},1200);
 }
 function gotoRefdes(item){
-  // SVG coords -> stack-local fraction -> pan so the part lands centered.
-  // offsetWidth/Height are the untransformed layout size the transform
-  // scales from, so the math stays exact at any zoom.
-  const stack=document.querySelector('#stack');
+  // SVG coords -> layer img layout fraction -> pan so the part centers.
+  // The #stack box has width but ZERO height (absolute children), so the
+  // transform origin sits on the stack's top line: a point at fraction fy
+  // lands at view.y + z*fy*imgH from center — no 0.5 term on Y (X keeps
+  // the width-based 0.5 term because the origin is the box's horizontal
+  // center).
+  const img=imgs[item.layer];
+  if(!img||!img.offsetWidth)return;
   const z=view.zoom||1;
-  const px=(item.fx-0.5)*stack.offsetWidth, py=(item.fy-0.5)*stack.offsetHeight;
+  const fx=view.back?1-item.fx:item.fx;
+  const px=(fx-0.5)*img.offsetWidth, py=item.fy*img.offsetHeight;
   view.x=-z*px; view.y=-z*py;
   applyView();saveView();
-  showRing(item.fx,item.fy);
+  showRing(img,fx,item.fy);
 }
 function renderSearch(){
   const idx=refdesIndex.get(displayed);
   searchResults.textContent='';
   const note=t=>{const d=document.createElement('div');d.className='meta';d.textContent=t;searchResults.append(d);searchResults.style.display='block'};
-  if(!idx){note('색인 구축 중…');return}
+  if(!idx||idx.building){note('색인 구축 중…');if(!idx)buildRefdesIndex(displayed);return}
   const q=searchInput.value.trim().toLowerCase();
   if(!q){searchResults.style.display='none';return}
   if(idx.reason){note(idx.reason);return}
@@ -213,7 +233,7 @@ function renderSearch(){
     const b=document.createElement('button');
     const main=document.createElement('span');main.textContent=m.ref;
     const meta=document.createElement('span');meta.className='meta';
-    meta.textContent=`${(m.fx*100).toFixed(0)},${(m.fy*100).toFixed(0)}%`;
+    meta.textContent=m.layer.startsWith('B')?'B':'F';
     b.append(main,meta);
     b.onclick=()=>{searchResults.style.display='none';gotoRefdes(m)};
     searchResults.append(b);
@@ -226,7 +246,7 @@ searchInput.addEventListener('keydown',e=>{if(e.key==='Escape'){searchInput.valu
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('#searchBox'))searchResults.style.display='none'},true);
 function assetMissing(){
   noticeFor('번들이 정리되었습니다 — 최신으로 이동합니다');
-  if(displayed===liveSeq)goLatest();
+  goLatest();
 }
 function setBadge(text,cls){badge.textContent=text;badge.className=cls}
 function renderBadge(){

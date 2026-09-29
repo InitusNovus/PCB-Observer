@@ -125,6 +125,11 @@ type ObserverSession(store: Store, state: LiveState, ?quotaBytes: int64) =
                 let list = String.Join(", ", pruned)
                 printfn $"history quota {quotaMb}MB: pruned bundles {list}"
 
+            if List.isEmpty pruned && store.TotalStoreBytes() > quotaBytes then
+                let quotaMb = quotaBytes / (1024L * 1024L)
+                let sizeMb = store.TotalStoreBytes() / (1024L * 1024L)
+                printfn $"history quota {quotaMb}MB: protected floor reached — store {sizeMb}MB retained (displayed + 2 most recent)"
+
             store.LogStoreSize snap.sequence
             state.RecordRendered snap.sequence snap.sha256 (DateTime.UtcNow.ToString("o"))
 
