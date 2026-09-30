@@ -345,18 +345,24 @@ document.addEventListener('pointerdown',e=>{if(!e.target.closest('#netBox'))netL
 // §25 DRC sidecar: strictly bound to the DISPLAYED bundle sequence.
 const drcChip=document.querySelector("#drcChip");
 const drcCache=new Map();
-async function loadDrc(seq){
-  drcChip.style.display="none";
-  if(drcCache.has(seq))return renderDrc(drcCache.get(seq));
+async function loadDrc(seq,force){
+  if(!force&&drcCache.has(seq))return renderDrc(drcCache.get(seq));
+  // Pending state for the LIVE bundle: the async sidecar may still be running
+  // (§35 distinguishes pending from genuinely absent).
+  if(seq===liveSeq&&!force)renderDrc({sequence:seq,status:'pending'});
   try{
     const j=await fetch(`/renders/${seq}/drc.json`).then(r=>r.ok?r.json():null);
+    // A miss on the live bundle stays pending (retry on next state event);
+    // a miss on a historical bundle is a genuine absence.
+    if(j===null&&seq===liveSeq)return;
     drcCache.set(seq,j);
     if(displayed===seq)renderDrc(j);
-  }catch(e){drcCache.set(seq,null);if(displayed===seq)renderDrc(null)}
+  }catch(e){if(seq===liveSeq)return;drcCache.set(seq,null);if(displayed===seq)renderDrc(null)}
 }
 function renderDrc(j){
   drcChip.style.display="inline-block"; // CSS default none; '' would stay none.
   if(!j){drcChip.className="";drcChip.textContent=`DRC: 이 번들(#${displayed}) 없음`;return}
+  if(j.status==='pending'){drcChip.className="";drcChip.textContent=`DRC #${j.sequence}: 확인 중…`;return}
   drcChip.className=j.status;
   if(j.status==="ok")drcChip.textContent=`DRC #${j.sequence}: 통과`;
   else if(j.status==="violations")drcChip.textContent=`DRC #${j.sequence}: ${j.errors} 오류 / ${j.warnings} 경고`;
@@ -388,6 +394,10 @@ function refreshFromState(){
     lastSource=s.source_last_event;lastCaptured=s.latest_captured_snapshot;lastRender=s.latest_completed_render;lastError=s.last_error;
     if(s.latest_completed_render)liveSeq=s.latest_completed_render.sequence;
     if(!hold&&!historyMode&&liveSeq&&displayed!==liveSeq)showSeq(liveSeq);else renderBadge();
+    // The sidecar result lands asynchronously AFTER the bundle event: on
+    // every state ping, re-poll the live bundle's sidecar while it is
+    // still pending (the async server-side Trigger() drives this).
+    if(!hold&&!historyMode&&liveSeq&&displayed===liveSeq&&!drcCache.has(liveSeq))loadDrc(liveSeq,true);
   });
 }
 // A9: subscribe FIRST, then fetch state — never miss a publish between the two.

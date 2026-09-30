@@ -23,9 +23,10 @@ type RuleSummary =
       tool_version: string
       note: string }
 
-/// Run kicad-cli `pcb drc` / `sch erc` with JSON output into `outPath`.
-/// Returns the tool's stdout (unused) and never throws for tool-level
-/// failures — the summary carries status=failed instead.
+/// Run kicad-cli `pcb drc` / `sch erc` with JSON output. `outPath` receives the
+/// raw report and is DELETED after parsing (a temp location keeps the store's
+/// staging/quota accounting clean). Tool-level failures never throw — the
+/// summary carries status=failed with the reason instead.
 let runRuleCheck
     (cli: string)
     (kind: string) // "pcb drc" | "sch erc"
@@ -37,6 +38,8 @@ let runRuleCheck
     : RuleSummary =
     let kindParts = kind.Split(' ', 2)
     let subcommand = kindParts[1]
+    let failed note : RuleSummary =
+        { sequence = sequence; snapshot_sha256 = snapshotHash; kind = subcommand; status = "failed"; errors = 0; warnings = 0; excluded = 0; total = 0; tool_version = toolVersion; note = note }
 
     try
         let psi = ProcessStartInfo(cli)
@@ -53,58 +56,82 @@ let runRuleCheck
 
         use p = Process.Start psi
 
+        // Drain both pipes concurrently BEFORE WaitForExit: kicad-cli can
+        // emit enough text to fill a pipe buffer, which would deadlock a
+        // post-exit ReadToEnd and surface as a bogus 180s timeout.
+        let outTask = p.StandardOutput.ReadToEndAsync()
+        let errTask = p.StandardError.ReadToEndAsync()
+
         if not (p.WaitForExit 180_000) then
             p.Kill(entireProcessTree = true)
-            { sequence = sequence; snapshot_sha256 = snapshotHash; kind = subcommand; status = "failed"; errors = 0; warnings = 0; excluded = 0; total = 0; tool_version = toolVersion; note = "timeout after 180s" }
+            failed "timeout after 180s"
         else
-            let _ = p.StandardOutput.ReadToEnd()
-            let _ = p.StandardError.ReadToEnd()
+            let _ = outTask.Result
+            let _ = errTask.Result
 
             if p.ExitCode <> 0 && not (File.Exists outPath) then
-                { sequence = sequence; snapshot_sha256 = snapshotHash; kind = subcommand; status = "failed"; errors = 0; warnings = 0; excluded = 0; total = 0; tool_version = toolVersion; note = $"kicad-cli exited with {p.ExitCode}" }
+                failed $"kicad-cli exited with {p.ExitCode}"
             else
-                // Parse the JSON report for severity counts.
-                use doc = JsonDocument.Parse(File.ReadAllText outPath)
-                let root = doc.RootElement
-                let mutable el = Unchecked.defaultof<JsonElement>
-                let countOf (severity: string) =
-                    if root.TryGetProperty("violations", &el) then
-                        Seq.filter
-                            (fun (v: JsonElement) ->
-                                let mutable sev = Unchecked.defaultof<JsonElement>
-                                v.TryGetProperty("severity", &sev) && sev.GetString() = severity)
-                            (el.EnumerateArray())
-                        |> Seq.length
-                    else
-                        0
+                try
+                    use doc = JsonDocument.Parse(File.ReadAllText outPath)
+                    let root = doc.RootElement
+                    let mutable el = Unchecked.defaultof<JsonElement>
 
-                let errs = countOf "error"
-                let warns = countOf "warning"
-                let excl = countOf "excluded"
+                    let countBy (arrayName: string) (severity: string) =
+                        if root.TryGetProperty(arrayName, &el) then
+                            Seq.filter
+                                (fun (v: JsonElement) ->
+                                    let mutable sev = Unchecked.defaultof<JsonElement>
+                                    v.TryGetProperty("severity", &sev) && sev.GetString() = severity)
+                                (el.EnumerateArray())
+                            |> Seq.length
+                        else
+                            0
 
-                { sequence = sequence
-                  snapshot_sha256 = snapshotHash
-                  kind = subcommand
-                  status = (if errs + warns > 0 then "violations" else "ok")
-                  errors = errs
-                  warnings = warns
-                  excluded = excl
-                  total = errs + warns
-                  tool_version = toolVersion
-                  note = $"bound to snapshot #{sequence}" }
+                    let arrayCount (arrayName: string) =
+                        if root.TryGetProperty(arrayName, &el) then (el.EnumerateArray() |> Seq.length) else 0
+
+                    // kicad-cli's DRC JSON also carries unconnected_items and
+                    // schematic_parity arrays whose entries KiCad itself counts
+                    // in its exit verdict (boundary review F2): a board with
+                    // only those issues must never report 통과.
+                    let errs = countBy "violations" "error"
+                    let warns = countBy "violations" "warning"
+                    let excl = countBy "violations" "excluded"
+                    let unconnected = arrayCount "unconnected_items"
+                    let parity = arrayCount "schematic_parity"
+                    let totalErrs = errs + unconnected + parity
+
+                    { sequence = sequence
+                      snapshot_sha256 = snapshotHash
+                      kind = subcommand
+                      status = (if totalErrs + warns > 0 then "violations" else "ok")
+                      errors = totalErrs
+                      warnings = warns
+                      excluded = excl
+                      total = totalErrs + warns
+                      tool_version = toolVersion
+                      note =
+                        (if unconnected + parity > 0 then
+                             $"bound to snapshot #{sequence} · includes {unconnected} unconnected / {parity} parity"
+                         else
+                             $"bound to snapshot #{sequence}") }
+                finally
+                    // The raw report never lingers (staging purge/quota are
+                    // blind to loose files at the staging root).
+                    try
+                        if File.Exists outPath then File.Delete outPath
+                    with _ ->
+                        ()
     with e ->
-        { sequence = sequence
-          snapshot_sha256 = snapshotHash
-          kind = subcommand
-          status = "failed"
-          errors = 0
-          warnings = 0
-          excluded = 0
-          total = 0
-          tool_version = toolVersion
-          note = e.Message }
+        failed e.Message
 
-/// Persist the summary beside its bundle as drc.json / erc.json.
+/// Persist the summary beside its bundle as drc.json / erc.json — atomically
+/// (temp + move) so a concurrent reader never sees a torn file.
 let writeSummary (bundleDir: string) (summary: RuleSummary) : unit =
     let name = if summary.kind = "erc" then "erc.json" else "drc.json"
-    File.WriteAllText(Path.Combine(bundleDir, name), JsonSerializer.Serialize(summary, JsonSerializerOptions(WriteIndented = true)))
+    let final = Path.Combine(bundleDir, name)
+    let tmp = final + ".tmp"
+
+    File.WriteAllText(tmp, JsonSerializer.Serialize(summary, JsonSerializerOptions(WriteIndented = true)))
+    File.Move(tmp, final, true)
