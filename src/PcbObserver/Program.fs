@@ -236,6 +236,23 @@ let private runWatch (argv: string list) : int =
 
                     store.WriteManifestWithViewBoxes(staging, snap, source, "kicad-cli", rendererVersion, layerSet, viewBoxes)
 
+                    // §24 net index (display-only): assigned objects per net
+                    // from the immutable snapshot; failures are explicit and
+                    // never block publication.
+                    try
+                        match viewBoxes |> List.tryPick (fun (_, v) -> v) with
+                        | Some vb ->
+                            let idx = PcbNetIndex.buildIndex snap.path vb PcbNetIndex.DefaultPerNetCap PcbNetIndex.DefaultTotalCap
+                            PcbNetIndex.writeNetsJson (Path.Combine(staging, "nets.json")) idx
+
+                            if idx.truncatedNets > 0 then
+                                printfn $"net index: {idx.nets.Length} nets · {idx.totalPrimitives} prims · {idx.truncatedNets} net(s) truncated (cap)"
+                            else
+                                printfn $"net index: {idx.nets.Length} nets · {idx.totalPrimitives} prims"
+                        | None -> printfn "net index skipped: no layer viewBox"
+                    with e ->
+                        printfn $"net index skipped: {e.Message}"
+
                 let onComplete (snap: Snapshot) : unit = session.Complete(snap, "bundle")
 
                 let onError (snap: Snapshot, ex: exn) : unit = session.Failed(snap, ex)

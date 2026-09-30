@@ -33,6 +33,14 @@
   #searchResults button{display:block;width:100%;margin:2px 0;text-align:left}
   #searchResults .meta{color:#8fa2b5;font-size:12px;margin-left:6px}
   #searchRing{position:absolute;left:50%;top:50%;width:80px;height:80px;border:3px solid #7fa3d1;border-radius:50%;transform:translate(-50%,-50%);display:none;pointer-events:none;z-index:4;opacity:.9;transition:opacity .8s}
+  #netBox{position:relative}
+  #netBox input{background:#151a20;color:inherit;border:1px solid #62758a;border-radius:5px;padding:5px 9px;width:120px}
+  #netList{position:absolute;top:110%;left:0;background:#222b36ee;border:1px solid #62758a;border-radius:6px;padding:6px;max-height:50vh;overflow:auto;display:none;z-index:7;min-width:200px}
+  #netList button{display:block;width:100%;margin:2px 0;text-align:left}
+  #netList .meta{color:#8fa2b5;font-size:12px;margin-left:6px}
+  #netOverlay{position:absolute;left:0;top:0;width:100%;pointer-events:none;z-index:2}
+  #netOverlay path,#netOverlay circle{fill:none;stroke:#ff5af0;stroke-opacity:.85}
+  #netLabel{padding:5px 10px;border-radius:5px;background:#3d1d3a;border:1px solid #6f2f66;display:none;white-space:nowrap}
 </style>
 <header>
   <strong>KiCad Observer</strong>
@@ -42,11 +50,13 @@
   <button id="historyBtn">HISTORY</button>
   <span id="layers"></span>
   <span id="searchBox"><input id="search" type="text" placeholder="RefDes (U103)" autocomplete="off" spellcheck="false"><div id="searchResults"></div></span>
+  <span id="netBox"><input id="netSearch" type="text" placeholder="Net (GND)" autocomplete="off" spellcheck="false"><div id="netList"></div></span>
+  <span id="netLabel">highlight</span>
   <button id="side">Back</button>
   <button id="fit">Reset view</button>
 </header>
 <div id="viewport">
-  <div id="stack"><div id="searchRing"></div></div>
+  <div id="stack"><svg id="netOverlay"></svg><div id="searchRing"></div></div>
   <div id="history"></div>
   <div id="notice"></div>
 </div>
@@ -145,6 +155,7 @@ async function showSeq(seq){
     imgs[name].onerror=()=>assetMissing(name);
   }
   buildRefdesIndex(seq);
+  loadNetIndex(seq);
   renderBadge();
 }
 
@@ -247,6 +258,83 @@ searchInput.addEventListener('input',renderSearch);
 searchInput.addEventListener('focus',renderSearch);
 searchInput.addEventListener('keydown',e=>{if(e.key==='Escape'){searchInput.value='';searchResults.style.display='none';searchInput.blur()}});
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('#searchBox'))searchResults.style.display='none'},true);
+
+// §24 net highlight (display-only indexing; NOT connectivity analysis).
+const netCache=new Map(); // seq -> nets.json | {reason} | {building}
+let selectedNet=null;
+const netSearchInput=document.querySelector('#netSearch');
+const netList=document.querySelector('#netList');
+const netOverlay=document.querySelector('#netOverlay');
+const netLabel=document.querySelector('#netLabel');
+async function loadNetIndex(seq){
+  if(netCache.has(seq)&&!netCache.get(seq).building)return;
+  netCache.set(seq,{building:true});
+  try{
+    const j=await fetch(`/renders/${seq}/nets.json`).then(r=>r.ok?r.json():null);
+    netCache.set(seq,j||{reason:'네트 색인 없음'});
+  }catch(e){
+    netCache.set(seq,{reason:'네트 색인 없음'});
+  }
+  if(document.activeElement===netSearchInput)renderNetList();
+  applySelectedNet();
+}
+function drawNet(entry, idxViewBox){
+  netOverlay.innerHTML='';
+  if(!entry){netLabel.style.display='none';return}
+  const vb=(idxViewBox||'0 0 1 1').split(/\s+/).map(Number);
+  const W=vb[2]||1,H=vb[3]||1;
+  netOverlay.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  netOverlay.setAttribute('preserveAspectRatio','none');
+  netOverlay.style.width='100%';
+  netOverlay.style.height='auto';
+  const ns='http://www.w3.org/2000/svg';
+  for(const row of entry.prims){
+    if(row.length===5){
+      const p=document.createElementNS(ns,'path');
+      p.setAttribute('d',`M ${(row[0]*W).toFixed(4)} ${(row[1]*H).toFixed(4)} L ${(row[2]*W).toFixed(4)} ${(row[3]*H).toFixed(4)}`);
+      p.setAttribute('stroke-width',(2*row[4]*W).toFixed(4));
+      netOverlay.appendChild(p);
+    }else{
+      const c=document.createElementNS(ns,'circle');
+      c.setAttribute('cx',(row[0]*W).toFixed(4));
+      c.setAttribute('cy',(row[1]*H).toFixed(4));
+      c.setAttribute('r',(row[2]*W).toFixed(4));
+      netOverlay.appendChild(c);
+    }
+  }
+  netLabel.style.display='';
+  netLabel.textContent=`highlight: ${entry.name}${entry.truncated?' (일부 표시)':''}`;
+}
+function applySelectedNet(){
+  const idx=netCache.get(displayed);
+  if(!selectedNet||!idx||!idx.nets){drawNet(null);return}
+  const hit=idx.nets.find(n=>n.name===selectedNet);
+  drawNet(hit||null, idx.viewBox);
+}
+function renderNetList(){
+  const idx=netCache.get(displayed);
+  netList.textContent='';
+  const note=t=>{const d=document.createElement('div');d.className='meta';d.textContent=t;netList.append(d);netList.style.display='block'};
+  if(!idx||idx.building){note('색인 구축 중…');if(!idx)loadNetIndex(displayed);return}
+  if(idx.reason){note(idx.reason);return}
+  const q=netSearchInput.value.trim().toLowerCase();
+  if(!q){netList.style.display='none';return}
+  const hits=idx.nets.filter(n=>n.name.toLowerCase().includes(q)).slice(0,50);
+  if(!hits.length){note('매칭 없음');return}
+  for(const n of hits){
+    const b=document.createElement('button');
+    const main=document.createElement('span');main.textContent=n.name;
+    const meta=document.createElement('span');meta.className='meta';meta.textContent=`${n.prims.length}${n.truncated?'+':''}`;
+    b.append(main,meta);
+    b.onclick=()=>{selectedNet=n.name;netSearchInput.value=n.name;netList.style.display='none';drawNet(n, idx.viewBox)};
+    netList.append(b);
+  }
+  netList.style.display='block';
+}
+netSearchInput.addEventListener('input',renderNetList);
+netSearchInput.addEventListener('focus',renderNetList);
+netSearchInput.addEventListener('keydown',e=>{if(e.key==='Escape'){selectedNet=null;netSearchInput.value='';netList.style.display='none';drawNet(null);netSearchInput.blur()}});
+document.addEventListener('pointerdown',e=>{if(!e.target.closest('#netBox'))netList.style.display='none'},true);
 function assetMissing(){
   noticeFor('번들이 정리되었습니다 — 최신으로 이동합니다');
   goLatest();
