@@ -132,40 +132,42 @@ let private runWatch (argv: string list) : int =
             (debounce: int option)
             (layersOpt: string option)
             (quotaOpt: int option)
+            (drcOpt: bool option)
             =
         match xs with
-        | [] -> Ok(pcb, output, cli, port, debounce, layersOpt, quotaOpt)
-        | "--output" :: v :: rest -> parse rest pcb (Some v) cli port debounce layersOpt quotaOpt
-        | "--cli" :: v :: rest -> parse rest pcb output (Some v) port debounce layersOpt quotaOpt
+        | [] -> Ok(pcb, output, cli, port, debounce, layersOpt, quotaOpt, drcOpt)
+        | "--output" :: v :: rest -> parse rest pcb (Some v) cli port debounce layersOpt quotaOpt drcOpt
+        | "--cli" :: v :: rest -> parse rest pcb output (Some v) port debounce layersOpt quotaOpt drcOpt
         | "--port" :: v :: rest ->
             match Int32.TryParse v with
-            | true, p -> parse rest pcb output cli (Some p) debounce layersOpt quotaOpt
+            | true, p -> parse rest pcb output cli (Some p) debounce layersOpt quotaOpt drcOpt
             | _ -> Error $"Invalid --port: {v}"
         | "--debounce-ms" :: v :: rest ->
             match Int32.TryParse v with
-            | true, d when d > 0 -> parse rest pcb output cli port (Some d) layersOpt quotaOpt
+            | true, d when d > 0 -> parse rest pcb output cli port (Some d) layersOpt quotaOpt drcOpt
             | _ -> Error $"Invalid --debounce-ms: {v}"
-        | "--layers" :: v :: rest -> parse rest pcb output cli port debounce (Some v) quotaOpt
+        | "--layers" :: v :: rest -> parse rest pcb output cli port debounce (Some v) quotaOpt drcOpt
         | "--history-quota-mb" :: v :: rest ->
             match Int32.TryParse v with
-            | true, q when q > 0 -> parse rest pcb output cli port debounce layersOpt (Some q)
+            | true, q when q > 0 -> parse rest pcb output cli port debounce layersOpt (Some q) drcOpt
             | _ -> Error $"Invalid --history-quota-mb: {v}"
+        | "--drc" :: rest -> parse rest pcb output cli port debounce layersOpt quotaOpt (Some true)
         | flag :: _ when flag.StartsWith "-" -> Error $"Unknown option: {flag}"
         | path :: rest ->
             if pcb.IsSome then Error "Multiple PCB paths given"
-            else parse rest (Some path) output cli port debounce layersOpt quotaOpt
+            else parse rest (Some path) output cli port debounce layersOpt quotaOpt drcOpt
 
-    let usage = "usage: PcbObserver watch <board.kicad_pcb> [--output DIR] [--cli PATH] [--port N] [--debounce-ms N] [--layers A,B,..] [--history-quota-mb N]"
+    let usage = "usage: PcbObserver watch <board.kicad_pcb> [--output DIR] [--cli PATH] [--port N] [--debounce-ms N] [--layers A,B,..] [--history-quota-mb N] [--drc]"
 
-    match parse argv None None None (Some 8765) (Some 500) None None with
+    match parse argv None None None (Some 8765) (Some 500) None None None with
     | Error message ->
         eprintfn "%s" message
         eprintfn "%s" usage
         2
-    | Ok(None, _, _, _, _, _, _) ->
+    | Ok(None, _, _, _, _, _, _, _) ->
         eprintfn "%s" usage
         2
-    | Ok(Some pcbPath, outputOpt, cliOpt, portOpt, debounceOpt, layersOpt, quotaOpt) ->
+    | Ok(Some pcbPath, outputOpt, cliOpt, portOpt, debounceOpt, layersOpt, quotaOpt, drcOpt) ->
         let source = Path.GetFullPath pcbPath
 
         if String.Equals(Path.GetExtension source, ".kicad_pcb", StringComparison.OrdinalIgnoreCase)
@@ -253,7 +255,25 @@ let private runWatch (argv: string list) : int =
                     with e ->
                         printfn $"net index skipped: {e.Message}"
 
-                let onComplete (snap: Snapshot) : unit = session.Complete(snap, "bundle")
+                // §25 DRC sidecar (opt-in): run against the published bundle's
+                // snapshot AFTER publication so the render critical path is
+                // untouched and the result binds to an immutable sequence.
+                let onComplete (snap: Snapshot) : unit =
+                    session.Complete(snap, "bundle")
+
+                    if drcOpt = Some true then
+                        async {
+                            try
+                                let bundleDir = store.BundlePath snap.sequence
+                                let reportPath = Path.Combine(store.StagingDir, $"drc-{snap.sequence}.json")
+                                let summary = RuleCheck.runRuleCheck cliPath "pcb drc" snap.path reportPath snap.sequence snap.sha256 rendererVersion
+                                RuleCheck.writeSummary bundleDir summary
+                                printfn $"DRC #{summary.sequence}: {summary.status} · {summary.errors} err / {summary.warnings} warn"
+                                state.Trigger()
+                            with e ->
+                                printfn $"DRC #{snap.sequence} failed: {e.Message}"
+                        }
+                        |> Async.Start
 
                 let onError (snap: Snapshot, ex: exn) : unit = session.Failed(snap, ex)
 

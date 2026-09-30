@@ -41,6 +41,10 @@
   #netOverlay{position:absolute;left:0;top:0;width:100%;pointer-events:none;z-index:2}
   #netOverlay path,#netOverlay circle{fill:none;stroke:#ff5af0;stroke-opacity:.85}
   #netLabel{padding:5px 10px;border-radius:5px;background:#3d1d3a;border:1px solid #6f2f66;display:none;white-space:nowrap}
+  #drcChip{padding:5px 10px;border-radius:5px;border:1px solid #62758a;background:#222b36;white-space:nowrap;display:none}
+  #drcChip.violations{background:#3a2a1d;border-color:#6f5f2f}
+  #drcChip.ok{background:#1d3a26;border-color:#2f6f45}
+  #drcChip.failed{background:#3a1d1d;border-color:#6f2f2f}
 </style>
 <header>
   <strong>KiCad Observer</strong>
@@ -52,6 +56,7 @@
   <span id="searchBox"><input id="search" type="text" placeholder="RefDes (U103)" autocomplete="off" spellcheck="false"><div id="searchResults"></div></span>
   <span id="netBox"><input id="netSearch" type="text" placeholder="Net (GND)" autocomplete="off" spellcheck="false"><div id="netList"></div></span>
   <span id="netLabel">highlight</span>
+  <span id="drcChip">DRC</span>
   <button id="side">Back</button>
   <button id="fit">Reset view</button>
 </header>
@@ -156,6 +161,7 @@ async function showSeq(seq){
   }
   buildRefdesIndex(seq);
   loadNetIndex(seq);
+  loadDrc(seq);
   renderBadge();
 }
 
@@ -336,6 +342,26 @@ netSearchInput.addEventListener('input',renderNetList);
 netSearchInput.addEventListener('focus',renderNetList);
 netSearchInput.addEventListener('keydown',e=>{if(e.key==='Escape'){selectedNet=null;netSearchInput.value='';netList.style.display='none';drawNet(null);netSearchInput.blur()}});
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('#netBox'))netList.style.display='none'},true);
+// §25 DRC sidecar: strictly bound to the DISPLAYED bundle sequence.
+const drcChip=document.querySelector("#drcChip");
+const drcCache=new Map();
+async function loadDrc(seq){
+  drcChip.style.display="none";
+  if(drcCache.has(seq))return renderDrc(drcCache.get(seq));
+  try{
+    const j=await fetch(`/renders/${seq}/drc.json`).then(r=>r.ok?r.json():null);
+    drcCache.set(seq,j);
+    if(displayed===seq)renderDrc(j);
+  }catch(e){drcCache.set(seq,null);if(displayed===seq)renderDrc(null)}
+}
+function renderDrc(j){
+  drcChip.style.display="inline-block"; // CSS default none; '' would stay none.
+  if(!j){drcChip.className="";drcChip.textContent=`DRC: 이 번들(#${displayed}) 없음`;return}
+  drcChip.className=j.status;
+  if(j.status==="ok")drcChip.textContent=`DRC #${j.sequence}: 통과`;
+  else if(j.status==="violations")drcChip.textContent=`DRC #${j.sequence}: ${j.errors} 오류 / ${j.warnings} 경고`;
+  else drcChip.textContent=`DRC #${j.sequence}: 실패(${j.note||""})`;
+}
 function assetMissing(){
   noticeFor('번들이 정리되었습니다 — 최신으로 이동합니다');
   goLatest();

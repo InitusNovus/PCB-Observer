@@ -10,6 +10,7 @@
     <Compile Include="SessionTests.fs" />
     <Compile Include="RenderTests.fs" />
     <Compile Include="NetIndexTests.fs" />
+    <Compile Include="RuleCheckTests.fs" />
     <Compile Include="WatchTests.fs" />
     <Compile Include="QueueTests.fs" />
     <Compile Include="StoreTests.fs" />

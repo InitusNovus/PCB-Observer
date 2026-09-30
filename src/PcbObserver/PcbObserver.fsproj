@@ -12,6 +12,7 @@
     <Compile Include="SchPipeline.fs" />
     <Compile Include="Watch.fs" />
     <Compile Include="PcbNetIndex.fs" />
+    <Compile Include="RuleCheck.fs" />
     <Compile Include="Store.fs" />
     <Compile Include="Queue.fs" />
     <Compile Include="Server.fs" />
