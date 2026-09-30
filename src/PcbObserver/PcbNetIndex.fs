@@ -23,7 +23,9 @@ type NetIndex =
     { viewBox: string
       nets: NetEntry list
       totalPrimitives: int
-      truncatedNets: int }
+      truncatedNets: int
+      extractedPrimitives: int
+      totalTruncated: bool }
 
 /// Cap defaults: keep the browser payload bounded on heavily-routed boards.
 let DefaultPerNetCap = 400
@@ -101,10 +103,15 @@ let private parseSx (s: string) : Sx list =
 
     let roots = ResizeArray<Sx>()
 
+    // Resilient top scan: a stray ')' yields None but is already consumed,
+    // so keep scanning instead of silently dropping the file's tail.
     let rec top () =
-        match parseOne () with
-        | Some x -> roots.Add x; top ()
-        | None -> ()
+        if i < n then
+            match parseOne () with
+            | Some x -> roots.Add x
+            | None -> ()
+
+            top ()
 
     top ()
     List.ofSeq roots
@@ -201,8 +208,11 @@ let private extractPads (declarations: Map<int, string>) (footprint: Sx) : (stri
                 | Some pAt ->
                     let pv = values pAt
                     let px, py = floatOf pv 0 0.0, floatOf pv 1 0.0
-                    let ax = fx + px * cosr - py * sinr
-                    let ay = fy + px * sinr + py * cosr
+                    // KiCad board space is y-down: the pad-offset rotation is
+                    // (x·cosθ + y·sinθ, −x·sinθ + y·cosθ) — the mirrored form
+                    // of the math-CCW matrix (boundary review finding).
+                    let ax = fx + px * cosr + py * sinr
+                    let ay = fy - px * sinr + py * cosr
                     let sizeV = pad |> tryNamedOne "size" |> Option.map values |> Option.defaultValue []
                     let dia = max (floatOf sizeV 0 1.0) (floatOf sizeV 1 1.0)
                     Some(net, Pad(ax, ay, dia)))
@@ -258,17 +268,20 @@ let buildIndex (pcbPath: string) (viewBox: string) (perNetCap: int) (totalCap: i
 
     let frac (v: float) (o: float) (size: float) = Math.Round((v - o) / size, 5)
 
+    let extracted = prims |> List.ofSeq
+    let totalTruncatedPrims = max 0 (extracted.Length - totalCap)
+
     let groups =
-        prims
-        |> Seq.truncate totalCap
-        |> Seq.groupBy fst
-        |> Seq.map (fun (net, items) ->
-            let all = List.ofSeq items
-            let items = all |> List.truncate perNetCap
+        extracted
+        |> List.truncate totalCap
+        |> List.groupBy fst
+        |> List.map (fun (net, items) ->
+            let all = items
+            let kept = all |> List.truncate perNetCap
 
             { name = net
               rows =
-                [ for (_, p) in items ->
+                [ for (_, p) in kept ->
                       match p with
                       | Segment (x1, y1, x2, y2, wd) ->
                           let row: float list = [ frac x1 x0 w; frac y1 y0 h; frac x2 x0 w; frac y2 y0 h; frac (wd / 2.0) 0.0 w ]
@@ -280,7 +293,6 @@ let buildIndex (pcbPath: string) (viewBox: string) (perNetCap: int) (totalCap: i
                           let row: float list = [ frac x x0 w; frac y y0 h; frac (d / 2.0) 0.0 w ]
                           row ]
               truncated = all.Length > perNetCap })
-        |> List.ofSeq
 
     let totalPrims = groups |> List.sumBy (fun g -> g.rows.Length)
     let truncatedNets = groups |> List.filter (fun g -> g.truncated) |> List.length
@@ -288,7 +300,9 @@ let buildIndex (pcbPath: string) (viewBox: string) (perNetCap: int) (totalCap: i
     { viewBox = viewBox
       nets = groups
       totalPrimitives = totalPrims
-      truncatedNets = truncatedNets }
+      truncatedNets = truncatedNets
+      extractedPrimitives = extracted.Length
+      totalTruncated = totalTruncatedPrims > 0 }
 
 /// Serialize the index as nets.json for a bundle.
 let writeNetsJson (path: string) (index: NetIndex) : unit =
@@ -296,6 +310,8 @@ let writeNetsJson (path: string) (index: NetIndex) : unit =
         JsonSerializer.Serialize(
             {| viewBox = index.viewBox
                total_primitives = index.totalPrimitives
+               extracted_primitives = index.extractedPrimitives
+               total_truncated = index.totalTruncated
                note = "display-only highlight index (spec §24): assigned objects, not connectivity analysis"
                nets = [ for g in index.nets -> {| name = g.name; truncated = g.truncated; prims = g.rows |} ] |},
             JsonSerializerOptions(WriteIndented = false)

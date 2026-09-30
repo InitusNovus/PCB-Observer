@@ -37,13 +37,13 @@ let ``parses net declarations segments vias and pads with rotation`` () =
         // Via at (30,20) dia 1.6 → r fraction = 0.8/100.
         Assert.Equal<float list>([ 0.3; 0.1; 0.008 ], gnd.rows.Head)
 
-        // Footprint at (100,50) rot 90°: pad (2,0) → (100, 52); pad (-2,0) → (100, 48).
+        // Footprint at (100,50) rot 90° (y-down): pad (2,0) → (100,48); pad (-2,0) → (100,52).
         let padVcc = vcc.rows.[1]
         let padGnd = gnd.rows.[1]
         Assert.Equal(1.0, padVcc.[0], 5)
-        Assert.Equal(0.26, padVcc.[1], 5)
+        Assert.Equal(0.24, padVcc.[1], 5)
         Assert.Equal(1.0, padGnd.[0], 5)
-        Assert.Equal(0.24, padGnd.[1], 5)
+        Assert.Equal(0.26, padGnd.[1], 5)
     finally
         Directory.Delete(root, true)
 
@@ -118,5 +118,25 @@ let ``numeric net references resolve and unnamed nets get a fallback`` () =
 
         Assert.True(idx.nets |> List.exists (fun n -> n.name = "+VDC"), $"+VDC missing: {idx.nets |> List.map (fun n -> n.name)}")
         Assert.True(idx.nets |> List.exists (fun n -> n.name = "<net 9>"))
+    finally
+        Directory.Delete(root, true)
+[<Fact>]
+let ``total cap sets explicit flags and counts`` () =
+    let root = tempDir ()
+
+    try
+        // 3 nets x 2 prims = 6 extracted; cap 5 keeps 5, drops 1.
+        let segs =
+            [ for i in 1..2 do
+                  for n in [ "A"; "B"; "C" ] ->
+                      $"  (segment (start {i} 0) (end {i} 1) (width 0.2) (net \"{n}\"))" ]
+            |> String.concat "\n"
+
+        let pcb = $"(kicad_pcb\n{segs}\n)"
+        let idx = buildIndex (writePcb root pcb) "0 0 10 10" 100 5
+
+        Assert.Equal(6, idx.extractedPrimitives)
+        Assert.True(idx.totalTruncated)
+        Assert.Equal(5, idx.totalPrimitives)
     finally
         Directory.Delete(root, true)

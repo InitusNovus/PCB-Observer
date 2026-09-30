@@ -302,14 +302,15 @@ function drawNet(entry, idxViewBox){
       netOverlay.appendChild(c);
     }
   }
-  netLabel.style.display='';
-  netLabel.textContent=`highlight: ${entry.name}${entry.truncated?' (일부 표시)':''}`;
+  netLabel.style.display='inline-block'; // CSS default is none; '' would stay none.
+  const totalNote=entry._totalTruncated?' · 전체 색인 일부 생략':'';
+  netLabel.textContent=`highlight: ${entry.name}${entry.truncated?' (일부 표시)':''}${totalNote}`;
 }
 function applySelectedNet(){
   const idx=netCache.get(displayed);
   if(!selectedNet||!idx||!idx.nets){drawNet(null);return}
   const hit=idx.nets.find(n=>n.name===selectedNet);
-  drawNet(hit||null, idx.viewBox);
+  const e=hit?Object.assign({_totalTruncated:!!idx.total_truncated},hit):null;drawNet(e, idx.viewBox);
 }
 function renderNetList(){
   const idx=netCache.get(displayed);
@@ -326,7 +327,7 @@ function renderNetList(){
     const main=document.createElement('span');main.textContent=n.name;
     const meta=document.createElement('span');meta.className='meta';meta.textContent=`${n.prims.length}${n.truncated?'+':''}`;
     b.append(main,meta);
-    b.onclick=()=>{selectedNet=n.name;netSearchInput.value=n.name;netList.style.display='none';drawNet(n, idx.viewBox)};
+    b.onclick=()=>{selectedNet=n.name;netSearchInput.value=n.name;netList.style.display='none';drawNet(Object.assign({_totalTruncated:!!idx.total_truncated},n), idx.viewBox)};
     netList.append(b);
   }
   netList.style.display='block';
