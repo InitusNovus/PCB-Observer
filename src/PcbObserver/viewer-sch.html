@@ -225,8 +225,8 @@ async function loadErc(seq,force){
 }
 function renderErc(j){
   ercChip.style.display='inline-block';
-  if(j.status==='pending'){ercChip.className='';ercChip.textContent=`ERC #${j.sequence}: 확인 중…`;return}
   if(!j){ercChip.className='';ercChip.textContent=`ERC: 이 번들(#${displayed}) 없음`;return}
+  if(j.status==='pending'){ercChip.className='';ercChip.textContent=`ERC #${j.sequence}: 확인 중…`;return}
   ercChip.className=j.status;
   if(j.status==='ok')ercChip.textContent=`ERC #${j.sequence}: 통과`;
   else if(j.status==='violations')ercChip.textContent=`ERC #${j.sequence}: ${j.errors} 오류 / ${j.warnings} 경고`;

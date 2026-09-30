@@ -94,3 +94,34 @@ let ``runRuleCheck tolerates a fake tool that writes a violations report`` () =
         Assert.Equal(9, summary.sequence)
     finally
         Directory.Delete(root, true)
+
+[<Fact>]
+let ``rule report arrays carry unconnected and parity entries the parser folds`` () =
+    let root = tempDir ()
+
+    try
+        // The false-통과 shape from the boundary review: violations empty,
+        // unconnected_items + schematic_parity non-empty. Asserts the report
+        // shape the parser reads (array names and JSON validity).
+        let report =
+            """{
+  "violations": [],
+  "unconnected_items": [ { "type": "u1" }, { "type": "u2" }, { "type": "u3" } ],
+  "schematic_parity": [ { "type": "p1" } ]
+}"""
+
+        let out = Path.Combine(root, "r.json")
+        File.WriteAllText(out, report)
+
+        use doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText out)
+        let r = doc.RootElement
+        let mutable el = Unchecked.defaultof<System.Text.Json.JsonElement>
+
+        let arrayCount (name: string) =
+            if r.TryGetProperty(name, &el) then (el.EnumerateArray() |> Seq.length) else 0
+
+        Assert.Equal(3, arrayCount "unconnected_items")
+        Assert.Equal(1, arrayCount "schematic_parity")
+        Assert.Equal(0, arrayCount "violations")
+    finally
+        Directory.Delete(root, true)

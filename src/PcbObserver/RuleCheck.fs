@@ -23,10 +23,11 @@ type RuleSummary =
       tool_version: string
       note: string }
 
-/// Run kicad-cli `pcb drc` / `sch erc` with JSON output. `outPath` receives the
-/// raw report and is DELETED after parsing (a temp location keeps the store's
-/// staging/quota accounting clean). Tool-level failures never throw — the
-/// summary carries status=failed with the reason instead.
+/// Run kicad-cli `pcb drc` / `sch erc` with JSON output. `outPath` receives
+/// the raw report and is DELETED on every exit path (parse, tool failure,
+/// timeout, exception) — staging purge and the byte quota are blind to loose
+/// files at the staging root. Tool-level failures never throw: the summary
+/// carries status=failed with the reason instead.
 let runRuleCheck
     (cli: string)
     (kind: string) // "pcb drc" | "sch erc"
@@ -38,14 +39,29 @@ let runRuleCheck
     : RuleSummary =
     let kindParts = kind.Split(' ', 2)
     let subcommand = kindParts[1]
-    let failed note : RuleSummary =
-        { sequence = sequence; snapshot_sha256 = snapshotHash; kind = subcommand; status = "failed"; errors = 0; warnings = 0; excluded = 0; total = 0; tool_version = toolVersion; note = note }
+
+    let failed (note: string) : RuleSummary =
+        { sequence = sequence
+          snapshot_sha256 = snapshotHash
+          kind = subcommand
+          status = "failed"
+          errors = 0
+          warnings = 0
+          excluded = 0
+          total = 0
+          tool_version = toolVersion
+          note = note }
+
+    let cleanup () =
+        try
+            if File.Exists outPath then File.Delete outPath
+        with _ ->
+            ()
 
     try
         let psi = ProcessStartInfo(cli)
         psi.ArgumentList.Add kindParts[0]
         psi.ArgumentList.Add subcommand
-
         psi.ArgumentList.Add "--format"
         psi.ArgumentList.Add "json"
         psi.ArgumentList.Add "--output"
@@ -54,25 +70,24 @@ let runRuleCheck
         psi.RedirectStandardOutput <- true
         psi.RedirectStandardError <- true
 
-        use p = Process.Start psi
-
         // Drain both pipes concurrently BEFORE WaitForExit: kicad-cli can
         // emit enough text to fill a pipe buffer, which would deadlock a
         // post-exit ReadToEnd and surface as a bogus 180s timeout.
+        use p = Process.Start psi
         let outTask = p.StandardOutput.ReadToEndAsync()
         let errTask = p.StandardError.ReadToEndAsync()
 
-        if not (p.WaitForExit 180_000) then
-            p.Kill(entireProcessTree = true)
-            failed "timeout after 180s"
-        else
-            let _ = outTask.Result
-            let _ = errTask.Result
-
-            if p.ExitCode <> 0 && not (File.Exists outPath) then
-                failed $"kicad-cli exited with {p.ExitCode}"
+        let result =
+            if not (p.WaitForExit 180_000) then
+                p.Kill(entireProcessTree = true)
+                failed "timeout after 180s"
             else
-                try
+                let _ = outTask.Result
+                let _ = errTask.Result
+
+                if p.ExitCode <> 0 && not (File.Exists outPath) then
+                    failed $"kicad-cli exited with {p.ExitCode}"
+                else
                     use doc = JsonDocument.Parse(File.ReadAllText outPath)
                     let root = doc.RootElement
                     let mutable el = Unchecked.defaultof<JsonElement>
@@ -116,14 +131,11 @@ let runRuleCheck
                              $"bound to snapshot #{sequence} · includes {unconnected} unconnected / {parity} parity"
                          else
                              $"bound to snapshot #{sequence}") }
-                finally
-                    // The raw report never lingers (staging purge/quota are
-                    // blind to loose files at the staging root).
-                    try
-                        if File.Exists outPath then File.Delete outPath
-                    with _ ->
-                        ()
+
+        cleanup ()
+        result
     with e ->
+        cleanup ()
         failed e.Message
 
 /// Persist the summary beside its bundle as drc.json / erc.json — atomically
