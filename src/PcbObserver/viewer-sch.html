@@ -20,6 +20,10 @@
   #pages{width:210px;background:#1b222c;border-right:1px solid #2c3745;overflow:auto;padding:8px}
   #pages button{display:block;width:100%;margin:3px 0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #pages button.current{background:#4b6b8f;border-color:#7fa3d1}
+  #ercChip{padding:5px 10px;border-radius:5px;border:1px solid #62758a;background:#222b36;white-space:nowrap;display:none}
+  #ercChip.violations{background:#3a2a1d;border-color:#6f5f2f}
+  #ercChip.ok{background:#1d3a26;border-color:#2f6f45}
+  #ercChip.failed{background:#3a1d1d;border-color:#6f2f2f}
   #pages .flag{color:#c58f4a;font-size:11px;margin-left:5px}
   #main{flex:1;display:flex;min-height:0}
   footer{padding:6px 14px;color:#a7b7c8;background:#222b36;display:flex;gap:18px;flex-wrap:wrap}
@@ -34,6 +38,7 @@
   <button id="hold">HOLD</button>
   <button id="latest">Latest</button>
   <button id="historyBtn">HISTORY</button>
+  <span id="ercChip">ERC</span>
   <button id="fit">Reset view</button>
 </header>
 <div id="main">
@@ -139,6 +144,7 @@ function showSeq(seq){
       applyView();
     }
     showPage();buildPageList();renderBadge();
+    loadErc(seq);
   });
 }
 function refreshFromState(){
@@ -204,6 +210,25 @@ viewport.addEventListener('pointerdown',e=>{
 viewport.addEventListener('pointermove',e=>{if(drag){view.x=e.clientX-drag[0];view.y=e.clientY-drag[1];applyView()}});
 viewport.addEventListener('pointerup',()=>{drag=null;saveView();savePageViews()});
 viewport.addEventListener('pointercancel',()=>drag=null);
+const ercChip=document.querySelector('#ercChip');
+const ercCache=new Map();
+async function loadErc(seq){
+  ercChip.style.display='none';
+  if(ercCache.has(seq))return renderErc(ercCache.get(seq));
+  try{
+    const j=await fetch(`/renders/${seq}/erc.json`).then(r=>r.ok?r.json():null);
+    ercCache.set(seq,j);
+    if(displayed===seq)renderErc(j);
+  }catch(e){ercCache.set(seq,null);if(displayed===seq)renderErc(null)}
+}
+function renderErc(j){
+  ercChip.style.display='inline-block';
+  if(!j){ercChip.className='';ercChip.textContent=`ERC: 이 번들(#${displayed}) 없음`;return}
+  ercChip.className=j.status;
+  if(j.status==='ok')ercChip.textContent=`ERC #${j.sequence}: 통과`;
+  else if(j.status==='violations')ercChip.textContent=`ERC #${j.sequence}: ${j.errors} 오류 / ${j.warnings} 경고`;
+  else ercChip.textContent=`ERC #${j.sequence}: 실패(${j.note||""})`;
+}
 document.querySelector('#fit').onclick=()=>{view={...DEFAULT_VIEW};applyView();saveView()};
 applyView();
 </script>

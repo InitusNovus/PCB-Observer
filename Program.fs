@@ -459,25 +459,7 @@ let private runWatchSch (argv: string list) : int =
                     if not (SchPipeline.bundleIsPublishable rows) then
                         failwith "schematic bundle not publishable (pages not rendered and not missing)"
 
-                // addendum §35 ERC sidecar (opt-in): same contract as DRC —
-                // snapshot-only, sequence-bound, post-publication, non-blocking.
-                let onComplete (snap: Snapshot) : unit =
-                    session.Complete(snap, "sch bundle")
-
-                    if ercOpt = Some true then
-                        async {
-                            try
-                                let bundleDir = store.BundlePath snap.sequence
-                                let reportPath = Path.Combine(store.StagingDir, $"erc-{snap.sequence}.json")
-                                let snapRoot = Path.Combine(snap.path, Path.GetFileName source)
-                                let summary = RuleCheck.runRuleCheck cliPath "sch erc" snapRoot reportPath snap.sequence snap.sha256 rendererVersion
-                                RuleCheck.writeSummary bundleDir summary
-                                printfn $"ERC #{summary.sequence}: {summary.status} · {summary.errors} err / {summary.warnings} warn"
-                                state.Trigger()
-                            with e ->
-                                printfn $"ERC #{snap.sequence} failed: {e.Message}"
-                        }
-                        |> Async.Start
+                let onComplete (snap: Snapshot) : unit = session.Complete(snap, "sch bundle")
 
                 let onError (snap: Snapshot, ex: exn) : unit = session.Failed(snap, ex)
 
