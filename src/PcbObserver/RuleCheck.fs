@@ -102,7 +102,32 @@ let runRuleCheck
                             |> Seq.length
                         else
                             0
+                    // KiCad 10's ERC JSON nests per-sheet results under
+                    // sheets[].violations (executor QA D1): fold those by
+                    // severity alongside the root-level arrays, or an ERC
+                    // with 119 warnings reports 통과.
+                    let countWithSheets (arrayName: string) (severity: string) =
+                        let rootCount = countBy arrayName severity
+                        let mutable sheetsEl = Unchecked.defaultof<JsonElement>
 
+                        if root.TryGetProperty("sheets", &sheetsEl) then
+                            let nested =
+                                sheetsEl.EnumerateArray()
+                                |> Seq.sumBy (fun (sheet: JsonElement) ->
+                                    let mutable v = Unchecked.defaultof<JsonElement>
+
+                                    if sheet.TryGetProperty("violations", &v) then
+                                        v.EnumerateArray()
+                                        |> Seq.filter (fun (x: JsonElement) ->
+                                            let mutable sev = Unchecked.defaultof<JsonElement>
+                                            x.TryGetProperty("severity", &sev) && sev.GetString() = severity)
+                                        |> Seq.length
+                                    else
+                                        0)
+
+                            rootCount + nested
+                        else
+                            rootCount
                     let arrayCount (arrayName: string) =
                         if root.TryGetProperty(arrayName, &el) then (el.EnumerateArray() |> Seq.length) else 0
 
@@ -110,9 +135,9 @@ let runRuleCheck
                     // schematic_parity arrays whose entries KiCad itself counts
                     // in its exit verdict (boundary review F2): a board with
                     // only those issues must never report 통과.
-                    let errs = countBy "violations" "error"
-                    let warns = countBy "violations" "warning"
-                    let excl = countBy "violations" "excluded"
+                    let errs = countWithSheets "violations" "error"
+                    let warns = countWithSheets "violations" "warning"
+                    let excl = countWithSheets "violations" "excluded"
                     let unconnected = arrayCount "unconnected_items"
                     let parity = arrayCount "schematic_parity"
                     let totalErrs = errs + unconnected + parity

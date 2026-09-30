@@ -125,3 +125,48 @@ let ``rule report arrays carry unconnected and parity entries the parser folds``
         Assert.Equal(0, arrayCount "violations")
     finally
         Directory.Delete(root, true)
+
+[<Fact>]
+let ``kicad10 erc sheets-nested violations are counted not missed`` () =
+    let root = tempDir ()
+
+    try
+        // The D1 shape: root violations empty, results nested under
+        // sheets[].violations — root-only counters would report 0/통과.
+        let report =
+            """{
+  "violations": [],
+  "sheets": [
+    { "sheet": "root", "violations": [ { "type": "a", "severity": "warning" }, { "type": "b", "severity": "warning" } ] },
+    { "sheet": "child", "violations": [ { "type": "c", "severity": "error" } ] }
+  ]
+}"""
+
+        let out = Path.Combine(root, "r.json")
+        File.WriteAllText(out, report)
+
+        use doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText out)
+        let r = doc.RootElement
+        let mutable sheetsEl = Unchecked.defaultof<System.Text.Json.JsonElement>
+        Assert.True(r.TryGetProperty("sheets", &sheetsEl))
+
+        // Mirror of countWithSheets: root 0 + nested (2 warnings + 1 error).
+        let mutable sev = Unchecked.defaultof<System.Text.Json.JsonElement>
+
+        let nested severity =
+            sheetsEl.EnumerateArray()
+            |> Seq.sumBy (fun (sheet: System.Text.Json.JsonElement) ->
+                let mutable v = Unchecked.defaultof<System.Text.Json.JsonElement>
+
+                if sheet.TryGetProperty("violations", &v) then
+                    v.EnumerateArray()
+                    |> Seq.filter (fun (x: System.Text.Json.JsonElement) ->
+                        x.TryGetProperty("severity", &sev) && sev.GetString() = severity)
+                    |> Seq.length
+                else
+                    0)
+
+        Assert.Equal(1, nested "error")
+        Assert.Equal(2, nested "warning")
+    finally
+        Directory.Delete(root, true)
