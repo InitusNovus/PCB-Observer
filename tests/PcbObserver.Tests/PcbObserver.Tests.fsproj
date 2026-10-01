@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <Compile Include="Tests.fs" />
+    <Compile Include="ConfigTests.fs" />
     <Compile Include="SessionTests.fs" />
     <Compile Include="RenderTests.fs" />
     <Compile Include="NetIndexTests.fs" />

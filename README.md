@@ -11,7 +11,7 @@ Set-Location C:\Dev\PCB-Observer
 dotnet test PCB-Observer.slnx
 
 # Live observer (watch mode):
-dotnet run --project src/PcbObserver -- watch 'C:\path\to\board.kicad_pcb' [--port 8765] [--cli PATH] [--debounce-ms 500] [--layers A,B,..] [--history-quota-mb N] [--output DIR]
+dotnet run --project src/PcbObserver -- watch 'C:\path\to\board.kicad_pcb' [--config PATH] [--port 8765] [--cli PATH] [--debounce-ms 500] [--layers A,B,..] [--history-quota-mb N] [--output DIR]
 # → opens a loopback URL; every save of the board updates the viewer (LIVE).
 # → RefDes search box (§23): type a reference prefix (e.g. C), pick a match,
 #   the viewport centers on that part with a highlight ring.
@@ -29,7 +29,7 @@ dotnet run --project src/PcbObserver -- 'C:\Program Files\KiCad\10.0\share\kicad
 powershell -ExecutionPolicy Bypass -File fixtures/sch/run-matrix.ps1 -KiCadCli 'C:/Program Files/KiCad/10.0/bin/kicad-cli.exe'
 
 # Schematic hierarchy observer (watch-sch):
-dotnet run --project src/PcbObserver -- watch-sch 'C:\path\to\root.kicad_sch' [--port 8765] [--debounce-ms 500] [--history-quota-mb N] [--output DIR]
+dotnet run --project src/PcbObserver -- watch-sch 'C:\path\to\root.kicad_sch' [--config PATH] [--port 8765] [--debounce-ms 500] [--history-quota-mb N] [--output DIR]
 # whole-design export from the root on every stable save; logical sheets keyed
 # by sheet-name chain (shared children render per instance); missing children
 # flagged explicitly; sheet list + per-sheet viewport memory + HOLD/HISTORY.
@@ -38,6 +38,8 @@ dotnet run --project src/PcbObserver -- watch-sch 'C:\path\to\root.kicad_sch' [-
 # Missing nested files/directories are detected when created. External-tree
 # references and symbolic links are not validated capture layouts.
 ```
+
+Configuration file (§38): --config PATH (default <observer root>/config.json) with keys cli, port, debounce-ms, layers, history-quota-mb, drc, erc, output. CLI flags override the file; unknown keys or malformed JSON abort startup (never silently ignored); a missing file means defaults. Startup prints the effective configuration with per-key provenance [flag/config/default].
 
 Observer data lives under `%LOCALAPPDATA%\PCBObserver` (snapshots, atomic render bundles `renders/<seq>/`, metadata, size logs) — never inside the watched project. Render bundles publish by directory rename; history is capped (50, protecting the last-published + 10 most recent). The server binds 127.0.0.1 only. The viewer shows copper single-active (F.Cu/B.Cu radio) with non-copper overlays; layer alignment (spec §11.2) is verified per publish — every bundle manifest records each layer's viewBox plus a `view_box_consistent` flag (measured identical across all 12 layers on real and demo boards). Back view is a horizontal mirror.
 History retention is two-layered: a count cap (50 bundles, protecting the last published + 10 most recent) and a byte quota (`--history-quota-mb`, default 512) that prunes oldest unprotected bundles — with their now-orphaned content-addressed snapshots — while always keeping the displayed bundle and the two most recent. Measured on a real board: schematic stores grow ~12.9MB/bundle, so the byte quota binds before the count cap in practice (a quota below the protected floor keeps the protected bundles and reports the pruned list on the console).
