@@ -20,7 +20,10 @@ type StateView =
     { source_last_event: string
       latest_captured_snapshot: CapturedView option
       latest_completed_render: CompletedView option
-      last_error: ErrorView option }
+      last_error: ErrorView option
+      sidecars: SidecarFlags }
+
+and SidecarFlags = { drc: bool; erc: bool }
 
 /// /api/snapshots rows (pinned field names, C7).
 type SnapshotRowView =
@@ -84,7 +87,7 @@ let start (viewerPath: string) (rendersRoot: string) (state: IStateHolder) (pref
 
         app.MapGet(
             "/renders/{seq}/{file}",
-            Func<string, string, IResult>(fun seq file ->
+            Func<string, string, HttpContext, IResult>(fun seq file ctx ->
                 // §31: only well-formed bundle paths inside rendersRoot are served.
                 let validSeq = fst (Int32.TryParse seq)
 
@@ -98,6 +101,10 @@ let start (viewerPath: string) (rendersRoot: string) (state: IStateHolder) (pref
                     let path = Path.Combine(rendersRoot, seq, file)
 
                     if File.Exists path then
+                        // Sidecar results (drc/erc.json) can be deleted by
+                        // quota pruning; a stale browser-cache hit would
+                        // serve a result that no longer exists on disk.
+                        ctx.Response.Headers.CacheControl <- "no-store"
                         Results.File(path, mimeFor file)
                     else
                         Results.NotFound()

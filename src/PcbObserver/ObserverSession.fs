@@ -18,6 +18,7 @@ type LiveState() =
     let mutable latestRendered: CompletedView option = None
     let mutable lastError: ErrorView option = None
     let mutable failedSeqs: int list = []
+    let mutable sidecars: Server.SidecarFlags = { drc = false; erc = false }
 
     member _.Gate = gate
     member _.Changed = changed.Publish :> IObservable<unit>
@@ -25,6 +26,11 @@ type LiveState() =
     member _.Trigger() = changed.Trigger()
 
     member _.SetLastEvent value = lock gate (fun () -> lastEvent <- value)
+
+    /// §35: expose whether the DRC/ERC sidecars are enabled so the viewer can
+    /// distinguish 'checking' from 'never will' (advisory D3).
+    member _.SetSidecars (drc: bool) (erc: bool) =
+        lock gate (fun () -> sidecars <- { drc = drc; erc = erc })
 
     member _.RecordCapture (snap: Snapshot) =
         lock gate (fun () ->
@@ -62,8 +68,13 @@ type LiveState() =
             { source_last_event = lastEvent
               latest_captured_snapshot = latestCaptured
               latest_completed_render = latestRendered
-              last_error = lastError }
-        )
+              last_error = lastError
+              sidecars = sidecars })
+
+    /// D4 (boundary advisory): the content hash of the last published render,
+    /// so callers can skip re-rendering identical content (directory-level FS
+    /// noise triggering a capture of unchanged bytes).
+    member _.LastRenderedHash = lock gate (fun () -> latestRendered |> Option.map (fun r -> r.content_hash))
 
     member _.FailedSeqs = lock gate (fun () -> failedSeqs)
 

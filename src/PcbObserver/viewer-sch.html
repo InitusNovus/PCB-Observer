@@ -151,6 +151,7 @@ function refreshFromState(){
   fetch('/api/state').then(r=>r.json()).then(s=>{
     lastSource=s.source_last_event;lastCaptured=s.latest_captured_snapshot;lastRender=s.latest_completed_render;lastError=s.last_error;
     if(s.latest_completed_render)liveSeq=s.latest_completed_render.sequence;
+    sidecarsEnabled=s.sidecars||{};
     if(!hold&&!historyMode&&liveSeq&&displayed!==liveSeq)showSeq(liveSeq);else renderBadge();
     if(!hold&&!historyMode&&liveSeq&&displayed===liveSeq&&!ercCache.has(liveSeq))loadErc(liveSeq,true);
   });
@@ -212,8 +213,10 @@ viewport.addEventListener('pointermove',e=>{if(drag){view.x=e.clientX-drag[0];vi
 viewport.addEventListener('pointerup',()=>{drag=null;saveView();savePageViews()});
 viewport.addEventListener('pointercancel',()=>drag=null);
 const ercChip=document.querySelector('#ercChip');
+let sidecarsEnabled={};
 const ercCache=new Map();
 async function loadErc(seq,force){
+  if(sidecarsEnabled.erc===false){ercChip.style.display='inline-block';ercChip.className='';ercChip.textContent='ERC: 꺼짐';return}
   if(!force&&ercCache.has(seq))return renderErc(ercCache.get(seq));
   if(seq===liveSeq&&!force)renderErc({sequence:seq,status:'pending'});
   try{

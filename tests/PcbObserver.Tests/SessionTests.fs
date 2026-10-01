@@ -130,3 +130,34 @@ let ``hydrate with a corrupt manifest still advances lastPublished without throw
         Assert.Equal<int>([ 5 ], store.CompleteBundles())
     finally
         Directory.Delete(root, true)
+
+[<Fact>]
+let ``sidecar flags surface through the state view`` () =
+    let state = LiveState()
+    state.SetSidecars true false
+
+    let view = state.View ()
+    Assert.True(view.sidecars.drc)
+    Assert.False(view.sidecars.erc)
+
+    state.SetSidecars false true
+    let view2 = state.View ()
+    Assert.False(view2.sidecars.drc)
+    Assert.True(view2.sidecars.erc)
+
+[<Fact>]
+let ``last rendered hash supports the identical-content skip`` () =
+    let root = tempDir ()
+
+    try
+        let store = Store(Path.Combine(root, "project"))
+        let state = LiveState()
+        let session = ObserverSession(store, state)
+
+        Assert.True(state.LastRenderedHash |> Option.isNone)
+
+        session.Complete(stageCompleteBundle store 1 "hashAAAAAAAA01", "bundle")
+
+        Assert.Equal(Some "hashAAAAAAAA01", state.LastRenderedHash)
+    finally
+        Directory.Delete(root, true)

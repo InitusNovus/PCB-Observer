@@ -344,8 +344,10 @@ netSearchInput.addEventListener('keydown',e=>{if(e.key==='Escape'){selectedNet=n
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('#netBox'))netList.style.display='none'},true);
 // §25 DRC sidecar: strictly bound to the DISPLAYED bundle sequence.
 const drcChip=document.querySelector("#drcChip");
+let sidecarsEnabled={};
 const drcCache=new Map();
 async function loadDrc(seq,force){
+  if(sidecarsEnabled.drc===false){drcChip.style.display="inline-block";drcChip.className="";drcChip.textContent="DRC: 꺼짐";return}
   if(!force&&drcCache.has(seq))return renderDrc(drcCache.get(seq));
   // Pending state for the LIVE bundle: the async sidecar may still be running
   // (§35 distinguishes pending from genuinely absent).
@@ -393,6 +395,7 @@ function refreshFromState(){
   fetch('/api/state').then(r=>r.json()).then(s=>{
     lastSource=s.source_last_event;lastCaptured=s.latest_captured_snapshot;lastRender=s.latest_completed_render;lastError=s.last_error;
     if(s.latest_completed_render)liveSeq=s.latest_completed_render.sequence;
+    sidecarsEnabled=s.sidecars||{};
     if(!hold&&!historyMode&&liveSeq&&displayed!==liveSeq)showSeq(liveSeq);else renderBadge();
     // The sidecar result lands asynchronously AFTER the bundle event: on
     // every state ping, re-poll the live bundle's sidecar while it is

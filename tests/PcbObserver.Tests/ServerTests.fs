@@ -15,7 +15,8 @@ type FixtureHolder() =
             { source_last_event = "source present · stable"
               latest_captured_snapshot = Some { sequence = 4; content_hash = "deadbeef"; captured_at = "2026-09-26T12:00:00Z"; capture_status = "stable" }
               latest_completed_render = Some { sequence = 4; content_hash = "deadbeef"; created_at = "2026-09-26T12:00:02Z"; status = "complete" }
-              last_error = None }
+              last_error = None
+              sidecars = { drc = false; erc = false } }
 
         override _.GetSnapshotRows() =
             [ { sequence = 4

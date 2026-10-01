@@ -209,6 +209,7 @@ let private runWatch (argv: string list) : int =
                 let state = LiveState()
                 let session = ObserverSession(store, state, ?quotaBytes = (match quotaOpt with Some q -> Some (int64 q * 1024L * 1024L) | None -> None))
                 session.Hydrate "bundle"
+                state.SetSidecars (drcOpt = Some true) false
 
                 // Rendered layer set for this run: --layers override or the
                 // full default set. The manifest self-describes it.
@@ -284,11 +285,21 @@ let private runWatch (argv: string list) : int =
 
                     try
                         let snap = captureSnapshot source store.SnapshotsDir seq
-                        store.AppendSnapshot(snap, source)
-                        state.SetLastEvent "source present · stable"
-                        state.RecordCapture snap
-                        printfn $"captured #{snap.sequence} · {snap.sha256.Substring(0, 12)}"
-                        queue.Post snap
+
+                        // D4: directory-level FS noise can re-capture identical
+                        // bytes; identical content never re-renders.
+                        match state.LastRenderedHash with
+                        | Some h when h = snap.sha256 ->
+                            store.AppendSnapshot(snap, source)
+                            state.SetLastEvent "source present · identical content · render skipped"
+                            state.RecordCapture snap
+                            printfn $"captured #{snap.sequence} · {snap.sha256.Substring(0, 12)} · identical content — render skipped"
+                        | _ ->
+                            store.AppendSnapshot(snap, source)
+                            state.SetLastEvent "source present · stable"
+                            state.RecordCapture snap
+                            printfn $"captured #{snap.sequence} · {snap.sha256.Substring(0, 12)}"
+                            queue.Post snap
                     with e ->
                         state.SetLastEvent $"capture unstable: {e.Message}"
                         printfn $"capture unstable: {e.Message}"
@@ -419,6 +430,7 @@ let private runWatchSch (argv: string list) : int =
                 let state = LiveState()
                 let session = ObserverSession(store, state, ?quotaBytes = (match quotaOpt with Some q -> Some (int64 q * 1024L * 1024L) | None -> None))
                 session.Hydrate "sch bundle"
+                state.SetSidecars false (ercOpt = Some true)
 
                 // Dynamic dependency set (SCH-FR-005): refreshed after each
                 // successful discovery so nested child directories are watched
@@ -520,10 +532,18 @@ let private runWatchSch (argv: string list) : int =
 
                         state.RecordCapture (SchPipeline.toSnapshot snap)
 
-                        printfn
-                            $"captured #{snap.sequence} · {snap.sha256.Substring(0, 12)} · {disc.files.Length} file(s){missingNote}"
+                        // D4: identical content (e.g. FS noise re-capture)
+                        // never re-renders; missing-child state changes still
+                        // publish because the hash covers the file set.
+                        match state.LastRenderedHash with
+                        | Some h when h = snap.sha256 && List.isEmpty disc.missing ->
+                            printfn
+                                $"captured #{snap.sequence} · {snap.sha256.Substring(0, 12)} · {disc.files.Length} file(s){missingNote} · identical content — render skipped"
+                        | _ ->
+                            printfn
+                                $"captured #{snap.sequence} · {snap.sha256.Substring(0, 12)} · {disc.files.Length} file(s){missingNote}"
 
-                        queue.Post(SchPipeline.toSnapshot snap)
+                            queue.Post(SchPipeline.toSnapshot snap)
                     with e ->
                         state.SetLastEvent $"capture unstable: {e.Message}"
                         printfn $"capture unstable: {e.Message}"
