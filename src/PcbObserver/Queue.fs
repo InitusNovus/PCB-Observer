@@ -15,6 +15,9 @@ type private Message =
 type RenderQueue(runRender: Snapshot -> unit, onComplete: Snapshot -> unit, onError: Snapshot * exn -> unit) =
 
     let mutable agent: MailboxProcessor<Message> = Unchecked.defaultof<_>
+    // D4: the hash most recently posted (running or pending); None until a
+    // post, cleared when the queue drains back to idle.
+    let mutable busyHash: string option = None
 
     let startRender (snap: Snapshot) =
         Async.Start
@@ -51,7 +54,9 @@ type RenderQueue(runRender: Snapshot -> unit, onComplete: Snapshot -> unit, onEr
                             | Some next ->
                                 startRender next
                                 return! loop true None
-                            | None -> return! loop false None
+                            | None ->
+                                lock agent (fun () -> busyHash <- None)
+                                return! loop false None
                         | RenderFailed(snap, e) ->
                             // A3: record + keep the last good bundle; the next
                             // source-save event re-renders. The loop survives (A2).
@@ -64,7 +69,9 @@ type RenderQueue(runRender: Snapshot -> unit, onComplete: Snapshot -> unit, onEr
                             | Some next ->
                                 startRender next
                                 return! loop true None
-                            | None -> return! loop false None
+                            | None ->
+                                lock agent (fun () -> busyHash <- None)
+                                return! loop false None
                     with _ ->
                         // Belt and braces: nothing may kill the loop (A2).
                         return! loop running pending
@@ -72,5 +79,10 @@ type RenderQueue(runRender: Snapshot -> unit, onComplete: Snapshot -> unit, onEr
 
                 loop false None)
 
-    member _.Post(snapshot: Snapshot) = agent.Post(Enqueue snapshot)
+    member _.Post(snapshot: Snapshot) =
+        lock agent (fun () -> busyHash <- Some snapshot.sha256)
+        agent.Post(Enqueue snapshot)
 
+    /// D4 skip gate: the hash most recently posted (running or pending);
+    /// None when the queue has drained back to idle.
+    member _.BusyHash: string option = lock agent (fun () -> busyHash)

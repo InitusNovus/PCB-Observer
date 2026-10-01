@@ -84,8 +84,10 @@ function renderBadge(){
   else if(displayed!==liveSeq){setBadge(`HISTORY · #${displayed} · latest #${liveSeq}`,'history')}
   else if(lastError&&(!lastRender||lastError.sequence>lastRender.sequence)){
     setBadge(`Displaying #${displayed} · render failed · will update on next save`,'error')}
-  else if(lastRender&&lastCaptured&&lastCaptured.sequence>lastRender.sequence){
+  else if(lastRender&&lastCaptured&&lastCaptured.sequence>lastRender.sequence&&lastCaptured.content_hash!==lastRender.content_hash){
     setBadge(`LIVE · #${lastRender.sequence} · rendering #${lastCaptured.sequence}…`,'')}
+  else if(lastRender&&lastCaptured&&lastCaptured.sequence>lastRender.sequence){
+    setBadge(`LIVE · #${lastRender.sequence} · 동일 내용 캡처 건너뜀`,'')}
   else{setBadge(`LIVE · #${liveSeq}`,'')}
   document.querySelector('#f-source').textContent=`source: ${lastSource}`;
   document.querySelector('#f-captured').textContent=lastCaptured?`captured: #${lastCaptured.sequence} ${new Date(lastCaptured.captured_at).toLocaleTimeString()}`:'captured: —';

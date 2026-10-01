@@ -313,9 +313,17 @@ let private runWatch (argv: string list) : int =
                             let snap = captureSnapshot source store.SnapshotsDir seq
 
                             // D4: directory-level FS noise can re-capture identical
-                            // bytes; identical content never re-renders.
-                            match state.LastRenderedHash with
-                            | Some h when h = snap.sha256 ->
+                            // bytes; identical content never re-renders — but
+                            // only while the queue is idle: a revert-to-previous
+                            // save during an in-flight render of different
+                            // content must still publish (boundary review: the
+                            // skip must never leave LIVE showing content that
+                            // no longer matches the source).
+                            let lastRenderedHash = state.LastRenderedHash
+                            let queueIdle = (queue.BusyHash |> Option.forall (fun h -> h = snap.sha256))
+
+                            match lastRenderedHash with
+                            | Some h when h = snap.sha256 && queueIdle ->
                                 store.AppendSnapshot(snap, source)
                                 state.SetLastEvent "source present · identical content · render skipped"
                                 state.RecordCapture snap
@@ -586,9 +594,13 @@ let private runWatchSch (argv: string list) : int =
 
                             // D4: identical content (e.g. FS noise re-capture)
                             // never re-renders; missing-child state changes still
-                            // publish because the hash covers the file set.
+                            // publish because the hash covers the file set,
+                            // and the skip only fires while the queue is idle
+                            // (boundary review: see the PCB counterpart).
+                            let queueIdle = (queue.BusyHash |> Option.forall (fun h -> h = snap.sha256))
+
                             match state.LastRenderedHash with
-                            | Some h when h = snap.sha256 && List.isEmpty disc.missing ->
+                            | Some h when h = snap.sha256 && List.isEmpty disc.missing && queueIdle ->
                                 printfn
                                     $"captured #{snap.sequence} · {snap.sha256.Substring(0, 12)} · {disc.files.Length} file(s){missingNote} · identical content — render skipped"
                             | _ ->
