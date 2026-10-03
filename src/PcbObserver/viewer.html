@@ -88,7 +88,7 @@ OVERLAYS.forEach(([n,,d])=>DEFAULT_VIEW.ov[n]=d);
 let view;
 try{view=Object.assign({},DEFAULT_VIEW,JSON.parse(localStorage.getItem(STORE_KEY)||'{}'));
     view.ov=Object.assign({},DEFAULT_VIEW.ov,view.ov||{});
-    if(!COPPER.includes(view.cu))view.cu='F.Cu';}
+    if(!COPPER.includes(view.cu)&&view.cu!=='both')view.cu='F.Cu';}
 catch(e){view=JSON.parse(JSON.stringify(DEFAULT_VIEW))}
 function saveView(){
   try{localStorage.setItem(STORE_KEY,JSON.stringify({zoom:view.zoom,x:view.x,y:view.y,back:view.back,cu:view.cu,ov:view.ov}))}catch(e){}
@@ -107,11 +107,15 @@ function noticeFor(sec){notice.textContent=sec;notice.style.display='block';setT
 // ---- layer UI (12 layers: copper radio + overlay checkboxes) ----
 function buildLayerUI(){
   layersBox.textContent='';
-  for(const cu of COPPER){
+  // Copper radio with a 'both' option (user request: view F and B copper
+  // simultaneously). view.cu ∈ {'F.Cu','B.Cu','both'}.
+  const CU_OPTIONS=[...COPPER,'both'];
+  const CU_LABELS={'F.Cu':'F.Cu','B.Cu':'B.Cu','both':'Both'};
+  for(const cu of CU_OPTIONS){
     const l=document.createElement('label');
     const r=document.createElement('input');r.type='radio';r.name='cu';r.value=cu;r.checked=view.cu===cu;
     r.onchange=()=>{view.cu=cu;applyLayerVisibility();saveView()};
-    l.append(r);l.append(cu);layersBox.append(l);
+    l.append(r);l.append(CU_LABELS[cu]);layersBox.append(l);
   }
   for(const [name,label] of OVERLAYS){
     const l=document.createElement('label');
@@ -123,7 +127,7 @@ function buildLayerUI(){
 function applyLayerVisibility(){
   for(const name of LAYERS){
     let on;
-    if(COPPER.includes(name))on=name===view.cu;
+    if(COPPER.includes(name))on=(view.cu==='both')||name===view.cu;
     else on=!!view.ov[name];
     imgs[name].classList.toggle('on',on);
   }
