@@ -246,7 +246,7 @@ let private runWatch (argv: string list) : int =
 
                             if picked.Length = 0 then invalidArg "--layers" "empty layer list"
                             picked
-                        | None -> Render.layers
+                        | None -> Render.layersForBoard source
 
                     let runRender (snap: Snapshot) : unit =
                         let staging = store.StagingFor snap.sequence

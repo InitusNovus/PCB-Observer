@@ -20,6 +20,35 @@ let layers =
        "B.Fab"
        "Cmts.User" |]
 
+/// Copper layers declared by a board's (layers ...) table — F.Cu, B.Cu, and
+/// any inner In<N>.Cu in file order. Used to size the default render set to
+/// the board (2-layer boards stay 2 copper; 4+ layer boards include In*.Cu).
+/// Empty when the table is missing/unreadable (caller falls back to the
+/// fixed default set).
+let boardCopperLayers (pcbPath: string) : string list =
+    try
+        let head = File.ReadAllText(pcbPath)
+
+        let m =
+            System.Text.RegularExpressions.Regex.Match(head, @"\n\t\(layers[\s\S]{0,4000}?\n\t\)")
+
+        if not m.Success then
+            []
+        else
+            [ for x in System.Text.RegularExpressions.Regex.Matches(m.Value, @"""([^""]*\.Cu)""") -> x.Groups[1].Value ]
+    with _ ->
+        []
+
+/// Default layer set FOR a specific board: its declared copper layers (in
+/// file order) plus the fixed overlay set. Falls back to the static default
+/// when the board declares no copper layers.
+let layersForBoard (pcbPath: string) : string[] =
+    match boardCopperLayers pcbPath with
+    | [] -> layers
+    | coppers ->
+        [| yield! coppers
+           yield! layers |> Array.skip 2 |] // skip F.Cu/B.Cu; keep overlays
+
 /// Extract the first viewBox-bearing <svg> tag's viewBox (§11.2 layer
 /// composition check; kicad-cli writes it on the root tag). None when
 /// absent or unreadable.

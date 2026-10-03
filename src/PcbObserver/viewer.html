@@ -80,7 +80,16 @@ const stack=document.querySelector('#stack'),viewport=document.querySelector('#v
 const badge=document.querySelector('#badge'),notice=document.querySelector('#notice');
 const historyPanel=document.querySelector('#history'),layersBox=document.querySelector('#layers');
 
-const imgs={};for(const name of LAYERS){const img=document.createElement('img');img.alt=name;img.onerror=()=>assetMissing(name);stack.append(img);imgs[name]=img}
+// Dynamic img pool: the manifest self-describes the rendered set (inner
+// copper layers In<N>.Cu appear on 4+ layer boards; --layers subsets shrink
+// it), so imgs are created on demand for whatever a bundle carries.
+const imgs={};
+function ensureImg(name){
+  if(imgs[name])return imgs[name];
+  const img=document.createElement('img');img.alt=name;img.onerror=()=>assetMissing(name);
+  stack.append(img);imgs[name]=img;return img;
+}
+LAYERS.forEach(ensureImg);
 
 // ---- persisted view state (survives browser reopen; AT-012 feedback) ----
 const STORE_KEY='pcbobs-view';
@@ -105,10 +114,18 @@ function applyView(){
 }
 function noticeFor(sec){notice.textContent=sec;notice.style.display='block';setTimeout(()=>notice.style.display='none',4000)}
 
-// ---- layer UI (12 layers: copper radio + overlay checkboxes) ----
+// ---- layer UI (manifest-driven: outer copper radio + inner copper and
+// overlay checkboxes; side-specific overlays follow the copper view) ----
+function innerCoppers(){ return manifestLayers.filter(n=>n.endsWith('.Cu')&&!COPPER.includes(n)) }
+function overlayList(){
+  // Overlays actually present in this bundle, in the canonical order first.
+  const canonical=OVERLAYS.map(o=>o[0]).filter(n=>manifestLayers.includes(n));
+  const extra=manifestLayers.filter(n=>!n.endsWith('.Cu')&&!canonical.includes(n));
+  return [...canonical,...extra];
+}
 function buildLayerUI(){
   layersBox.textContent='';
-  // Copper radio with a 'both' option (user request: view F and B copper
+  // Copper radio with a 'both' option (view F and B outer copper
   // simultaneously). view.cu ∈ {'F.Cu','B.Cu','both'}.
   const CU_OPTIONS=[...COPPER,'both'];
   const CU_LABELS={'F.Cu':'F.Cu','B.Cu':'B.Cu','both':'Both'};
@@ -118,19 +135,37 @@ function buildLayerUI(){
     r.onchange=()=>{view.cu=cu;applyLayerVisibility();saveView()};
     l.append(r);l.append(CU_LABELS[cu]);layersBox.append(l);
   }
-  for(const [name,label] of OVERLAYS){
+  // Inner copper layers (In1.Cu…): independent checkboxes, default on.
+  for(const name of innerCoppers()){
     const l=document.createElement('label');
-    const c=document.createElement('input');c.type='checkbox';c.checked=!!view.ov[name];
+    const c=document.createElement('input');c.type='checkbox';
+    if(!(name in view.ov))view.ov[name]=true;
+    c.checked=!!view.ov[name];
+    c.onchange=()=>{view.ov[name]=c.checked;applyLayerVisibility();saveView()};
+    l.append(c);l.append(name);layersBox.append(l);
+  }
+  for(const name of overlayList()){
+    const label=(OVERLAYS.find(o=>o[0]===name)||[null,name])[1];
+    const l=document.createElement('label');
+    const c=document.createElement('input');c.type='checkbox';
+    if(!(name in view.ov))view.ov[name]=!!(OVERLAYS.find(o=>o[0]===name)||[null,null,false])[2];
+    c.checked=!!view.ov[name];
     c.onchange=()=>{view.ov[name]=c.checked;applyLayerVisibility();saveView()};
     l.append(c);l.append(label);layersBox.append(l);
   }
 }
 function applyLayerVisibility(){
-  for(const name of LAYERS){
+  for(const name of manifestLayers){
+    const img=imgs[name];
+    if(!img)continue;
     let on;
-    if(COPPER.includes(name))on=(view.cu==='both')||name===view.cu;
+    if(name==='F.Cu')on=(view.cu==='both')||view.cu==='F.Cu';
+    else if(name==='B.Cu')on=(view.cu==='both')||view.cu==='B.Cu';
+    else if(name.endsWith('.Cu'))on=!!view.ov[name];
+    else if(name.startsWith('F.'))on=view.cu!=='B.Cu'&&!!view.ov[name];
+    else if(name.startsWith('B.'))on=view.cu!=='F.Cu'&&!!view.ov[name];
     else on=!!view.ov[name];
-    imgs[name].classList.toggle('on',on);
+    img.classList.toggle('on',on);
   }
 }
 
@@ -152,18 +187,21 @@ async function showSeq(seq){
   }catch(e){nextLayers=[]}
   if(request!==manifestRequest)return;
   manifestLayers=nextLayers;
-  for(const name of LAYERS){
+  for(const name in imgs){
     const img=imgs[name];
     img.onerror=null;
     img.removeAttribute('src');
+    img.classList.remove('on');
   }
-  const wanted=LAYERS.filter(n=>manifestLayers.includes(n));
-  for(const name of wanted){
+  // Ensure imgs exist for everything this bundle carries (inner coppers,
+  // non-canonical extras), then request exactly the manifest set.
+  manifestLayers.forEach(ensureImg);
+  for(const name of manifestLayers){
     imgs[name].src=`/renders/${seq}/${encodeURIComponent(name)}.svg`;
-  }
-  for(const name of wanted){
     imgs[name].onerror=()=>assetMissing(name);
   }
+  buildLayerUI();
+  applyLayerVisibility();
   buildRefdesIndex(seq);
   loadNetIndex(seq);
   loadDrc(seq);
@@ -232,8 +270,8 @@ function gotoRefdes(item){
   // lands at view.y + z*fy*imgH from center — no 0.5 term on Y (X keeps
   // the width-based 0.5 term because the origin is the box's horizontal
   // center).
-  const img=imgs[item.layer];
-  if(!img||!img.offsetWidth)return;
+  const img=(imgs[item.layer]&&imgs[item.layer].offsetWidth)?imgs[item.layer]:(imgs['F.Cu']&&imgs['F.Cu'].offsetWidth?imgs['F.Cu']:Object.values(imgs).find(i=>i.offsetWidth));
+  if(!img)return;
   const z=view.zoom||1;
   const fx=view.back?1-item.fx:item.fx;
   const px=(fx-0.5)*img.offsetWidth, py=item.fy*img.offsetHeight;
