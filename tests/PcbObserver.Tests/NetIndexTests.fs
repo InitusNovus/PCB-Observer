@@ -140,3 +140,45 @@ let ``total cap sets explicit flags and counts`` () =
         Assert.Equal(5, idx.totalPrimitives)
     finally
         Directory.Delete(root, true)
+
+[<Fact>]
+let ``zone filled polygons index as even-length rows and teardrops are skipped`` () =
+    let root = tempDir ()
+
+    try
+        let pcb =
+            "(kicad_pcb\n"
+            + "  (net 1 \"In\")\n"
+            + "  (zone\n"
+            + "    (net 1)\n"
+            + "    (net_name \"In\")\n"
+            + "    (layer \"F.Cu\")\n"
+            + "    (filled_polygon\n"
+            + "      (layer \"F.Cu\")\n"
+            + "      (pts (xy 1 1) (xy 9 1) (xy 9 9) (xy 1 1))\n"
+            + "    )\n"
+            + "  )\n"
+            + "  (zone\n"
+            + "    (net 1)\n"
+            + "    (net_name \"In\")\n"
+            + "    (attr (teardrop (type padvia)))\n"
+            + "    (filled_polygon\n"
+            + "      (layer \"F.Cu\")\n"
+            + "      (pts (xy 2 2) (xy 3 2) (xy 3 3) (xy 2 2))\n"
+            + "    )\n"
+            + "  )\n"
+            + ")"
+
+        let idx = buildIndex (writePcb root pcb) "0 0 10 10" 100 1000
+
+        let inNet = idx.nets |> List.tryFind (fun n -> n.name = "In")
+        Assert.True(inNet.IsSome, "In net missing")
+        // Only the non-teardrop zone: one polygon row with an even length
+        // (4 points -> 8 values), fractions of 1/10 and 9/10.
+        Assert.Equal(1, inNet.Value.rows.Length)
+        let row = inNet.Value.rows[0]
+        Assert.Equal(8, row.Length)
+        Assert.Equal(0.1, row[0], 5)
+        Assert.Equal(0.9, row[4], 5)
+    finally
+        Directory.Delete(root, true)

@@ -40,6 +40,7 @@
   #netList .meta{color:#8fa2b5;font-size:12px;margin-left:6px}
   #netOverlay{position:absolute;left:0;top:0;width:100%;pointer-events:none;z-index:2}
   #netOverlay path,#netOverlay circle{fill:none;stroke:#ff5af0;stroke-opacity:.85}
+  #netOverlay polygon{fill:#ff5af0;fill-opacity:.22;stroke:#ff5af0;stroke-opacity:.7;stroke-width:.254}
   #netLabel{padding:5px 10px;border-radius:5px;background:#3d1d3a;border:1px solid #6f2f66;display:none;white-space:nowrap}
   #drcChip{padding:5px 10px;border-radius:5px;border:1px solid #62758a;background:#222b36;white-space:nowrap;display:none}
   #drcChip.violations{background:#3a2a1d;border-color:#6f5f2f}
@@ -304,12 +305,19 @@ function drawNet(entry, idxViewBox){
       p.setAttribute('d',`M ${(row[0]*W).toFixed(4)} ${(row[1]*H).toFixed(4)} L ${(row[2]*W).toFixed(4)} ${(row[3]*H).toFixed(4)}`);
       p.setAttribute('stroke-width',(2*row[4]*W).toFixed(4));
       netOverlay.appendChild(p);
-    }else{
+    }else if(row.length===3){
       const c=document.createElementNS(ns,'circle');
       c.setAttribute('cx',(row[0]*W).toFixed(4));
       c.setAttribute('cy',(row[1]*H).toFixed(4));
       c.setAttribute('r',(row[2]*W).toFixed(4));
       netOverlay.appendChild(c);
+    }else{
+      // Even-length rows (>= 6) are zone copper polygons: closed, filled.
+      const pts=[];
+      for(let i=0;i+1<row.length;i+=2)pts.push(`${(row[i]*W).toFixed(4)},${(row[i+1]*H).toFixed(4)}`);
+      const p=document.createElementNS(ns,'polygon');
+      p.setAttribute('points',pts.join(' '));
+      netOverlay.appendChild(p);
     }
   }
   netLabel.style.display='inline-block'; // CSS default is none; '' would stay none.

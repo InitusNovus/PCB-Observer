@@ -13,6 +13,7 @@ type Primitive =
     | Segment of x1: float * y1: float * x2: float * y2: float * width: float
     | Via of x: float * y: float * dia: float
     | Pad of x: float * y: float * dia: float
+    | ZonePoly of pts: (float * float) list
 
 /// One net's index: display primitives as [kind; x1; y1; x2; y2] fraction
 /// rows (vias/pads repeat the centre in all four) plus an explicit
@@ -185,6 +186,50 @@ let private extractVia (net: string) (form: Sx) : (string * Primitive) option =
         Some(net, Via(floatOf av 0 0.0, floatOf av 1 0.0, floatOf (form |> tryNamedOne "size" |> Option.map values |> Option.defaultValue []) 0 0.8))
     | None -> None
 
+/// Zone copper: each filled_polygon's pts (the actual filled copper — the
+/// outline `polygon` is only the pour boundary). Teardrop zones are renderer
+/// artifacts, not designed copper, and are skipped.
+let private extractZone (declarations: Map<int, string>) (form: Sx) : (string * Primitive) list =
+    let isTeardrop =
+        // (attr (teardrop ...)) — the marker sits inside the attr form's
+        // children, so search one level down (belt and braces: any descendant
+        // named teardrop marks the zone).
+        let rec hasTeardrop (form: Sx) : bool =
+            match form with
+            | List (Atom "teardrop" :: _) -> true
+            | List xs -> xs |> List.exists hasTeardrop
+            | _ -> false
+
+        form |> named "attr" |> List.exists hasTeardrop
+
+    if isTeardrop then []
+    else
+        let netName =
+            match tryNamedOne "net_name" form |> Option.map values with
+            | Some [ name ] when name <> "" -> Some name
+            | _ -> tryNetName declarations form
+
+        match netName with
+        | None -> []
+        | Some net ->
+            let polys =
+                form
+                |> named "filled_polygon"
+                |> List.choose (fun fp ->
+                    match fp |> tryNamedOne "pts" with
+                    | Some pts ->
+                        let xy =
+                            pts
+                            |> named "xy"
+                            |> List.map (fun f ->
+                                let v = values f
+                                (floatOf v 0 0.0, floatOf v 1 0.0))
+
+                        if List.length xy >= 3 then Some xy else None
+                    | None -> None)
+
+            polys |> List.map (fun pts -> (net, ZonePoly pts))
+
 /// Pad absolute position: footprint (at fx fy frot) then pad (at px py prot);
 /// the pad centre is footprint-at + rotate(pad-offset, frot). The pad marker
 /// is a DISPLAY aid (§24) — shape/orientation fidelity is not claimed.
@@ -257,6 +302,9 @@ let buildIndex (pcbPath: string) (viewBox: string) (perNetCap: int) (totalCap: i
                 | Some "footprint" ->
                     for p in extractPads declarations f do
                         Some p
+                | Some "zone" ->
+                    for p in extractZone declarations f do
+                        Some p
                 | _ -> ()
         }
         |> Seq.choose id
@@ -291,6 +339,15 @@ let buildIndex (pcbPath: string) (viewBox: string) (perNetCap: int) (totalCap: i
                           row
                       | Pad (x, y, d) ->
                           let row: float list = [ frac x x0 w; frac y y0 h; frac (d / 2.0) 0.0 w ]
+                          row
+                      | ZonePoly pts ->
+                          // Even-length row (>= 6) discriminates polygons from
+                          // circles (3) and segments (5) in nets.json.
+                          let row: float list =
+                              [ for (px, py) in pts do
+                                    frac px x0 w
+                                    frac py y0 h ]
+
                           row ]
               truncated = all.Length > perNetCap })
 
