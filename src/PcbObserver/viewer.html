@@ -458,7 +458,19 @@ function isInteractiveTarget(target){
 viewport.addEventListener('wheel',e=>{
   if(isInteractiveTarget(e.target))return;
   e.preventDefault();
-  view.zoom=Math.max(.2,Math.min(20,view.zoom*(e.deltaY<0?1.15:1/1.15)));
+  // Zoom anchored at the mouse cursor: the layout point under the pointer
+  // stays fixed. screen = view + z·q is affine in the transform chain, so
+  // view' = k·view + (1-k)·cursor (k = z1/z0) holds for front and Back
+  // (mirrored) views alike.
+  const z0=view.zoom||1;
+  const z1=Math.max(.2,Math.min(20,z0*(e.deltaY<0?1.15:1/1.15)));
+  if(z1===z0)return;
+  const k=z1/z0;
+  const r=viewport.getBoundingClientRect();
+  const cx=e.clientX-(r.left+r.width/2), cy=e.clientY-(r.top+r.height/2);
+  view.x=k*view.x+(1-k)*cx;
+  view.y=k*view.y+(1-k)*cy;
+  view.zoom=z1;
   applyView();saveView()
 },{passive:false});
 let drag=null;
